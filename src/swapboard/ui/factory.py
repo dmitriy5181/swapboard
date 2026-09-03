@@ -6,7 +6,9 @@ from swapboard.ui.views import models_bp
 
 
 def create_app(config: dict | None = None) -> Flask:
-    app = Flask(__name__, template_folder="templates", static_folder="static")
+    # No static folder: the dashboard uses stock Bootstrap from a CDN and ships
+    # no CSS or JavaScript of its own.
+    app = Flask(__name__, template_folder="templates", static_folder=None)
 
     settings = UISettings()
     app.config["SWAPBOARD_API_URL"] = settings.api_url
