@@ -16,46 +16,39 @@
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span>
-                <i class="bi bi-hdd-network me-2"></i>Inference Server
+                Inference Server
                 {% if gateway.status.value == 'ok' %}
-                <span class="badge badge-positive ms-2">Online</span>
+                <span class="badge text-bg-success ms-2">Online</span>
                 {% else %}
-                <span class="badge badge-negative ms-2">Unavailable</span>
+                <span class="badge text-bg-danger ms-2">Unavailable</span>
                 {% endif %}
             </span>
             <button type="button" class="btn btn-outline-secondary btn-sm"
                     hx-get="{{ url_for('models_bp.partial_models') }}"
                     hx-target="#models-section" hx-swap="outerHTML">
-                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                Refresh
             </button>
         </div>
         <div class="card-body">
-            <p class="card-intro small">
+            <p class="text-body-secondary small">
                 Local models served by llama-swap. Download a model to make it
                 available for inference.
             </p>
 
             {% if gateway.status.value == 'ok' and gateway.endpoint_url %}
             <div class="mb-3">
-                <label class="form-label small text-muted mb-1" for="endpoint-url">
+                <label class="form-label small text-body-secondary mb-1" for="endpoint-url">
                     OpenAI-compatible endpoint (use as the Base URL in your client)
                 </label>
-                <div class="input-group input-group-sm">
-                    <input type="text" class="form-control font-monospace"
-                           value="{{ gateway.endpoint_url }}" readonly
-                           id="endpoint-url"
-                           onfocus="this.select()">
-                    <button type="button" class="btn btn-outline-secondary"
-                            title="Copy to clipboard"
-                            onclick="navigator.clipboard.writeText(document.getElementById('endpoint-url').value)">
-                        <i class="bi bi-clipboard"></i>
-                    </button>
-                </div>
+                <input type="text" class="form-control form-control-sm font-monospace"
+                       value="{{ gateway.endpoint_url }}" readonly
+                       id="endpoint-url"
+                       onfocus="this.select()">
             </div>
             {% endif %}
 
             {% if gateway.status.value != 'ok' %}
-            <p class="text-muted small mb-0">
+            <p class="text-body-secondary small mb-0">
                 The swapboard API could not be reached. Check that it is running and reachable.
             </p>
             {% elif gateway.models %}
@@ -63,42 +56,42 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
-                            <th class="table-col-xwide">Name</th>
-                            <th class="table-col-fill">Repository</th>
-                            <th class="table-col-status">Status</th>
-                            <th class="table-col-actions text-end">Actions</th>
+                            <th>Name</th>
+                            <th>Repository</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for model in gateway.models %}
                         <tr>
                             <td>{{ model.name }}</td>
-                            <td class="text-truncate">{{ model.repo_id }}</td>
+                            <td>{{ model.repo_id }}</td>
                             <td>
                                 {% if model.download_state.value == 'downloading' %}
-                                <span class="badge badge-neutral">
+                                <span class="badge text-bg-secondary">
                                     <span class="spinner-border spinner-border-sm me-1"></span>Downloading
                                 </span>
                                 {% elif model.present or model.download_state.value == 'completed' %}
-                                <span class="badge badge-positive">Available</span>
+                                <span class="badge text-bg-success">Available</span>
                                 {% elif model.download_state.value == 'failed' %}
-                                <span class="badge badge-negative" title="{{ model.download_error or '' }}">Failed</span>
+                                <span class="badge text-bg-danger" title="{{ model.download_error or '' }}">Failed</span>
                                 {% else %}
-                                <span class="badge badge-neutral">Not downloaded</span>
+                                <span class="badge text-bg-secondary">Not downloaded</span>
                                 {% endif %}
                             </td>
                             <td class="text-end">
                                 {% if model.present or model.download_state.value == 'completed' %}
-                                <span class="text-muted small fst-italic">ready</span>
+                                <span class="text-body-secondary small">ready</span>
                                 {% elif model.download_state.value == 'downloading' %}
                                 <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
-                                    <i class="bi bi-hourglass-split me-1"></i>In progress
+                                    In progress
                                 </button>
                                 {% else %}
                                 <button type="button" class="btn btn-sm btn-outline-secondary"
                                         hx-post="{{ url_for('models_bp.download_model', name=model.name) }}"
                                         hx-target="#models-section" hx-swap="outerHTML">
-                                    <i class="bi bi-download me-1"></i>Download
+                                    Download
                                 </button>
                                 {% endif %}
                             </td>
@@ -108,7 +101,7 @@
                 </table>
             </div>
             {% else %}
-            <p class="text-muted small mb-0">No models are configured in llama-swap.</p>
+            <p class="text-body-secondary small mb-0">No models are configured in llama-swap.</p>
             {% endif %}
         </div>
     </div>

@@ -3,16 +3,15 @@
 Model management API and dashboard for [llama-swap](https://github.com/mostlygeek/llama-swap).
 
 swapboard reads your llama-swap configuration, works out which Hugging Face
-repository each model comes from, reports whether its GGUF files are present on
+repository each model comes from, reports whether its files are present on
 disk, and downloads the missing ones on request. It ships two parts:
 
 - a **JSON API** (FastAPI) that other services can drive, and
 - a **web dashboard** (Flask + HTMX) for doing it by hand.
 
-On macOS it can also deploy itself: llama-swap and llama.cpp are downloaded from
-pinned, checksummed upstream releases into a private directory and run as
-launchd agents, so neither binary ever lands on your `PATH` and your own
-llama.cpp build is left alone.
+On macOS it can also deploy itself, running llama-swap and llama.cpp from
+pinned, checksummed upstream builds kept in a private directory, so neither
+binary lands on your `PATH` and your own llama.cpp build is left alone.
 
 ## Install
 
@@ -31,17 +30,10 @@ cp .env.example .env
 swapboard-dev --config ./llama-swap.example.yml
 ```
 
-`swapboard-dev` downloads the pinned llama-swap and llama.cpp builds on first
-run (macOS; elsewhere it falls back to a `llama-swap` on your `PATH`), then runs
-llama-swap, the API and the dashboard together with interleaved logs.
-
-| Service | Default port |
-| --- | --- |
-| Dashboard | 8773 |
-| API | 8771 |
-| llama-swap | 8772 |
-
-Open <http://127.0.0.1:8773>.
+`swapboard-dev` runs llama-swap, the API and the dashboard together with
+interleaved logs, and prints the URL to open. On macOS it fetches the pinned
+runtimes on first use; elsewhere it falls back to a `llama-swap` on your
+`PATH`.
 
 ## Configuration
 
@@ -50,8 +42,8 @@ of its `-m` path, so models must be laid out as `<org>/<repo>/<filename>`. A
 model with an `--mmproj` projector is only reported present once both files
 exist.
 
-Refer to llama-server through the `${llama_server}` macro rather than a bare
-name, so the private binary is used:
+Refer to llama-server through a macro rather than a bare name, so the binary
+swapboard manages is the one that gets used:
 
 ```yaml
 macros:
@@ -69,17 +61,10 @@ models:
 swapboard sets `MODELS_DIR` and `LLAMA_SERVER_BIN` when it launches llama-swap.
 See [`llama-swap.example.yml`](llama-swap.example.yml) for a fuller example.
 
-### Environment variables
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `SWAPBOARD_LLAMA_SWAP_CONFIG_PATH` | `/etc/llama-swap/config/config.yaml` | Config to read models from |
-| `SWAPBOARD_LLAMA_SWAP_PORT` | `8080` | Port llama-swap serves on, reported by `/info` |
-| `SWAPBOARD_MODELS_PATH` | `/models` | Where GGUF files are downloaded |
-| `SWAPBOARD_HF_TOKEN` | — | Token for private or gated repositories |
-| `SWAPBOARD_UI_API_URL` | `http://127.0.0.1:8771` | Where the dashboard reaches the API |
-| `SWAPBOARD_UI_HOST` | `127.0.0.1` | Dashboard bind address |
-| `SWAPBOARD_UI_PORT` | `8773` | Dashboard port |
+Configuration is read from `SWAPBOARD_*` environment variables, covering the
+config file to read, where models are stored, a Hugging Face token for private
+or gated repositories, and the addresses the services bind to.
+[`.env.example`](.env.example) lists them all with their defaults.
 
 ## API
 
@@ -91,9 +76,9 @@ See [`llama-swap.example.yml`](llama-swap.example.yml) for a fuller example.
 | `GET` | `/models/{name}` | Status of one model |
 | `POST` | `/models/{name}/download` | Starts a background download |
 
-Downloads run in a background thread; poll `/models/{name}` for progress. A
-model already downloading will not be started twice, and a failed download can
-be retried without refetching files that already arrived.
+Downloads run in the background; poll `/models/{name}` for progress. A model
+already downloading will not be started twice, and a failed download can be
+retried without refetching files that already arrived.
 
 ### Python client
 
@@ -109,8 +94,8 @@ for model in status.models:
 ## Running the services
 
 ```sh
-swapboard-api --host 127.0.0.1 --port 8771
-swapboard-ui  --host 127.0.0.1 --port 8773
+swapboard-api --help
+swapboard-ui --help
 ```
 
 Or point any ASGI/WSGI server at `swapboard.api.main:app` and
@@ -128,32 +113,20 @@ uv pip install --python ~/.swapboard/venv/bin/python 'swapboard[all]'
 ~/.swapboard/venv/bin/swapboard-deploy deploy --config ./llama-swap.yml
 ```
 
-That yields:
+Runtimes, models, config and logs all live under that prefix, and the services
+run as launchd agents. `swapboard-deploy uninstall` removes the agents and
+runtimes, leaving models and config in place. Apple Silicon and Intel are both
+supported.
 
-```
-~/.swapboard/
-├── venv/
-├── runtimes/llama-cpp/       # pinned llama.cpp, never on PATH
-├── runtimes/llama-swap/      # pinned llama-swap, never on PATH
-├── models/
-├── config/llama-swap.yml
-└── log/{llama-swap,api,ui}.log
-```
-
-and three launchd agents: `com.swapboard.llama-swap`, `com.swapboard.api` and
-`com.swapboard.ui`. Use `--no-ui` to skip the dashboard, and
-`swapboard-deploy uninstall` to remove the agents and runtimes (models and
-config are left in place).
-
-Runtimes are verified against pinned SHA-256 digests before extraction and can
-be managed on their own:
+The pinned runtimes are verified against recorded SHA-256 digests before
+extraction, and can be managed on their own:
 
 ```sh
-swapboard-runtimes install    # or: status, path llama-server, remove
+swapboard-runtimes install    # or: status, path, remove
 ```
 
-Apple Silicon and Intel are both supported. Linux is supported for the API and
-dashboard; for llama-swap itself, use the upstream container image.
+Linux is supported for the API and dashboard; for llama-swap itself, use the
+upstream container image.
 
 ## Development
 
