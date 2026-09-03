@@ -2,11 +2,32 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from swapboard.runtimes import cli, installer
+from swapboard.runtimes import cli, installer, manifest
 
 
 def invoke(*arguments: str):
     return CliRunner().invoke(cli.main, list(arguments))
+
+
+def test_install_explains_an_unsupported_platform(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(manifest, "current_platform", lambda: ("linux", "x86_64"))
+
+    result = invoke("install", "--prefix", str(tmp_path))
+
+    assert result.exit_code != 0
+    assert "Managed runtimes are available on macOS" in result.output
+    # A ClickException, not an unhandled error surfacing as a traceback.
+    assert isinstance(result.exception, SystemExit)
+
+
+def test_status_explains_an_unsupported_platform(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(manifest, "current_platform", lambda: ("linux", "x86_64"))
+
+    result = invoke("status", "--prefix", str(tmp_path))
+
+    assert result.exit_code != 0
+    assert "Managed runtimes are available on macOS" in result.output
+    assert isinstance(result.exception, SystemExit)
 
 
 def test_install_reports_each_runtime(tmp_path: Path, monkeypatch) -> None:

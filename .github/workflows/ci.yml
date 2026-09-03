@@ -1,12 +1,22 @@
 name: CI
 
 on:
+  # Pull requests are where changes are gated. The push trigger is scoped to
+  # main so it only runs post-merge: merge commits can combine two individually
+  # green branches into a broken tree, and nothing else would catch that.
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
   release:
     types: [published]
+  workflow_dispatch:
+
+# A new push to a branch makes the previous run redundant. Runs on main and on
+# releases are never cancelled, since those are the ones worth keeping.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
