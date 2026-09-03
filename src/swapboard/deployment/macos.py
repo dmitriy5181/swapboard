@@ -35,9 +35,11 @@ UI_LABEL = "com.swapboard.ui"
 # Ordered so dependants stop before what they depend on.
 ALL_LABELS = (UI_LABEL, API_LABEL, LLAMA_SWAP_LABEL)
 
-DEFAULT_UI_PORT = 8770
 DEFAULT_API_PORT = 8771
 DEFAULT_LLAMA_SWAP_PORT = 8772
+# 8770 is deliberately avoided: macOS runs com.apple.sharingd there for
+# Continuity and AirDrop, so binding it fails on any Mac.
+DEFAULT_UI_PORT = 8773
 DEFAULT_HOST = "127.0.0.1"
 
 # Deliberately excludes Homebrew: the services must resolve their binaries from

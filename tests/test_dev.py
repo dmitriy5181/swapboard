@@ -34,10 +34,10 @@ def test_api_command_can_enable_reload() -> None:
 
 
 def test_ui_command_targets_the_ui_module() -> None:
-    command = dev.build_ui_command(8770)
+    command = dev.build_ui_command(8773)
 
     assert command[:3] == [sys.executable, "-m", "swapboard.ui.run"]
-    assert command[-2:] == ["--port", "8770"]
+    assert command[-2:] == ["--port", "8773"]
 
 
 def test_environment_wires_llama_swap_to_the_resolved_binary(tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_read_env_file_parses_pairs_and_skips_noise(tmp_path: Path) -> None:
         "\n"
         "SWAPBOARD_HF_TOKEN=token\n"
         'SWAPBOARD_MODELS_PATH="/models"\n'
-        "SWAPBOARD_UI_PORT = 8770 \n"
+        "SWAPBOARD_UI_PORT = 8773 \n"
         "not-a-pair\n",
         encoding="utf-8",
     )
@@ -97,7 +97,7 @@ def test_read_env_file_parses_pairs_and_skips_noise(tmp_path: Path) -> None:
     assert values == {
         "SWAPBOARD_HF_TOKEN": "token",
         "SWAPBOARD_MODELS_PATH": "/models",
-        "SWAPBOARD_UI_PORT": "8770",
+        "SWAPBOARD_UI_PORT": "8773",
     }
 
 

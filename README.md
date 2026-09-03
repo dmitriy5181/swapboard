@@ -37,11 +37,11 @@ llama-swap, the API and the dashboard together with interleaved logs.
 
 | Service | Default port |
 | --- | --- |
-| Dashboard | 8770 |
+| Dashboard | 8773 |
 | API | 8771 |
 | llama-swap | 8772 |
 
-Open <http://127.0.0.1:8770>.
+Open <http://127.0.0.1:8773>.
 
 ## Configuration
 
@@ -79,7 +79,7 @@ See [`llama-swap.example.yml`](llama-swap.example.yml) for a fuller example.
 | `SWAPBOARD_HF_TOKEN` | — | Token for private or gated repositories |
 | `SWAPBOARD_UI_API_URL` | `http://127.0.0.1:8771` | Where the dashboard reaches the API |
 | `SWAPBOARD_UI_HOST` | `127.0.0.1` | Dashboard bind address |
-| `SWAPBOARD_UI_PORT` | `8770` | Dashboard port |
+| `SWAPBOARD_UI_PORT` | `8773` | Dashboard port |
 
 ## API
 
@@ -110,7 +110,7 @@ for model in status.models:
 
 ```sh
 swapboard-api --host 127.0.0.1 --port 8771
-swapboard-ui  --host 127.0.0.1 --port 8770
+swapboard-ui  --host 127.0.0.1 --port 8773
 ```
 
 Or point any ASGI/WSGI server at `swapboard.api.main:app` and

@@ -20,7 +20,7 @@ def test_defaults_come_from_settings(monkeypatch) -> None:
     result = CliRunner().invoke(run.main, [])
 
     assert result.exit_code == 0
-    assert app.called_with == {"host": "127.0.0.1", "port": 8770, "debug": False}
+    assert app.called_with == {"host": "127.0.0.1", "port": 8773, "debug": False}
 
 
 def test_command_line_overrides_settings(monkeypatch) -> None:

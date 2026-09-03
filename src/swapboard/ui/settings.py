@@ -11,4 +11,6 @@ class UISettings(BaseSettings):
 
     api_url: str = "http://127.0.0.1:8771"
     host: str = "127.0.0.1"
-    port: int = 8770
+    # 8770 is deliberately avoided: macOS runs com.apple.sharingd there for
+    # Continuity and AirDrop, so binding it fails on any Mac.
+    port: int = 8773

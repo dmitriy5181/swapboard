@@ -239,7 +239,7 @@ def test_prepare_directories_creates_the_prefix_tree(layout, config) -> None:
 
 
 def test_health_ports_cover_every_deployed_service(layout, config) -> None:
-    assert build(layout, config)._health_ports() == [8772, 8771, 8770]
+    assert build(layout, config)._health_ports() == [8772, 8771, 8773]
     assert build(layout, config, with_ui=False)._health_ports() == [8772, 8771]
 
 
