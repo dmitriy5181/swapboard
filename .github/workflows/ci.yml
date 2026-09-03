@@ -127,17 +127,17 @@ jobs:
     steps:
       - name: Validate the deployment configuration
         run: |
-          test -n "${SWAPBOARD_CONFIG_PATH}" || {
-            echo "SWAPBOARD_CONFIG_PATH GitHub Actions variable is required" >&2
+          install_prefix="${HOME}/.swapboard"
+          config_path="${SWAPBOARD_CONFIG_PATH:-${install_prefix}/llama-swap.yml}"
+          test -f "${config_path}" || {
+            echo "No llama-swap config on this host at ${config_path}" >&2
             exit 1
           }
-          test -f "${SWAPBOARD_CONFIG_PATH}" || {
-            echo "No llama-swap config on this host at ${SWAPBOARD_CONFIG_PATH}" >&2
-            exit 1
-          }
-          # swapboard derives its prefix from the parent of its virtualenv, so
-          # this is the only path the deployment needs to be told about.
-          echo "APP_VENV=${HOME}/.swapboard/venv" >>"${GITHUB_ENV}"
+          {
+            echo "INSTALL_PREFIX=${install_prefix}"
+            echo "APP_VENV=${install_prefix}/venv"
+            echo "SWAPBOARD_CONFIG_PATH=${config_path}"
+          } >>"${GITHUB_ENV}"
 
       - name: Ensure uv is installed
         run: command -v uv >/dev/null || brew install uv
@@ -148,7 +148,7 @@ jobs:
         # way, so this costs no availability that the deploy would not.
         run: |
           test -x "${APP_VENV}/bin/swapboard-deploy" || exit 0
-          "${APP_VENV}/bin/swapboard-deploy" stop
+          "${APP_VENV}/bin/swapboard-deploy" stop --prefix "${INSTALL_PREFIX}"
 
       - name: Install the published release
         run: |
@@ -182,4 +182,5 @@ jobs:
           SWAPBOARD_HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           "${APP_VENV}/bin/swapboard-deploy" deploy \
+            --prefix "${INSTALL_PREFIX}" \
             --config "${SWAPBOARD_CONFIG_PATH}"
