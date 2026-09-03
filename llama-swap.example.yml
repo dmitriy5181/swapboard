@@ -1,0 +1,80 @@
+# Example llama-swap configuration.
+#
+# swapboard exports two variables into llama-swap's environment, which the
+# macros below pick up:
+#
+#   LLAMA_SERVER_BIN  absolute path to the private llama-server binary
+#   MODELS_DIR        directory GGUF files are downloaded into
+#
+# Referring to llama-server through ${llama_server} rather than a bare name is
+# what keeps swapboard independent of whatever llama.cpp the host may have on
+# its PATH.
+#
+# swapboard derives each model's Hugging Face source from the last three
+# components of its `-m` (and optional `--mmproj`) path, so those must be laid
+# out as <org>/<repo>/<filename>.
+
+macros:
+  models_dir: "${env.MODELS_DIR}"
+  llama_server: "${env.LLAMA_SERVER_BIN}"
+
+models:
+  "embeddinggemma-300M":
+    cmd: |
+      ${llama_server} --port ${PORT}
+      -m ${models_dir}/ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
+      --embeddings
+      --parallel 1
+      --threads 4
+      --threads-batch 4
+      --batch-size 1024
+      --ubatch-size 1024
+      --gpu-layers auto
+
+  "gemma-4-E2B-it-Q4_0":
+    cmd: |
+      ${llama_server} --port ${PORT}
+      -m ${models_dir}/ggml-org/gemma-4-E2B-it-GGUF/gemma-4-E2B-it-Q4_0.gguf
+      --mmproj ${models_dir}/ggml-org/gemma-4-E2B-it-GGUF/mmproj-gemma-4-E2B-it-Q8_0.gguf
+      --ctx-size 8192
+      --parallel 1
+      --threads 4
+      --threads-batch 4
+      --batch-size 1024
+      --ubatch-size 256
+      --gpu-layers auto
+
+  "qwen3.5-4b-q4_k_m":
+    cmd: |
+      ${llama_server} --port ${PORT}
+      -m ${models_dir}/unsloth/Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf
+      --mmproj ${models_dir}/unsloth/Qwen3.5-4B-GGUF/mmproj-F16.gguf
+      --jinja
+      --ctx-size 16384
+      --parallel 1
+      --threads 4
+      --threads-batch 4
+      --batch-size 1024
+      --ubatch-size 256
+      --gpu-layers auto
+
+  "qwen3-reranker-0.6b-q8_0":
+    cmd: |
+      ${llama_server} --port ${PORT}
+      -m ${models_dir}/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/qwen3-reranker-0.6b-q8_0.gguf
+      --reranking
+      --parallel 1
+      --threads 4
+      --threads-batch 4
+      --batch-size 1024
+      --ubatch-size 512
+      --gpu-layers auto
+
+matrix:
+  vars:
+    embedding: embeddinggemma-300M
+    qwen35: qwen3.5-4b-q4_k_m
+    gemma4e2b: gemma-4-E2B-it-Q4_0
+    reranker: qwen3-reranker-0.6b-q8_0
+  sets:
+    embedding_and_llm: "embedding & (qwen35 | gemma4e2b)"

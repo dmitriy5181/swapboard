@@ -1,0 +1,82 @@
+[project]
+name = "swapboard"
+dynamic = ["version"]
+description = "Model management API and dashboard for llama-swap"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+authors = [{ name = "Dmitriy Lopatko", email = "dima@foboz.net" }]
+keywords = ["llama-swap", "llama.cpp", "llm", "gguf", "inference"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic>=2.13.4",
+    "pydantic-settings",
+    "httpx",
+    "pyyaml>=6.0",
+    "fastapi[standard]",
+    "uvicorn[standard]",
+    "huggingface-hub>=1.27.0",
+    "hf-transfer>=0.1.8",
+]
+
+[project.optional-dependencies]
+ui = ["flask", "gunicorn"]
+deploy = ["click"]
+all = ["swapboard[ui,deploy]"]
+
+[project.urls]
+Homepage = "https://github.com/dmitriy5181/swapboard"
+Repository = "https://github.com/dmitriy5181/swapboard"
+Issues = "https://github.com/dmitriy5181/swapboard/issues"
+
+[project.scripts]
+swapboard-api = "swapboard.api.run:main"
+swapboard-ui = "swapboard.ui.run:main"
+swapboard-deploy = "swapboard.deployment.macos:main"
+swapboard-runtimes = "swapboard.runtimes.cli:main"
+swapboard-dev = "swapboard.dev:main"
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov", "pytest-timeout", "ruff", "ty"]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+# Tags are CalVer and already valid PEP 440 releases, so the tag is reproduced
+# verbatim. `no-local-version` keeps a dirty checkout from appending `+g<sha>`,
+# which PyPI rejects on upload.
+raw-options = { version_scheme = "no-guess-dev", local_scheme = "no-local-version" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swapboard"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Turns a hung test into a failure with a traceback instead of a wedged run.
+timeout = 60
+
+[tool.coverage.run]
+source = ["swapboard"]
+disable_warnings = ["couldnt-parse"]
