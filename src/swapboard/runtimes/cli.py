@@ -4,7 +4,7 @@ import click
 
 from swapboard.common.paths import Layout
 from swapboard.runtimes import installer
-from swapboard.runtimes.manifest import RUNTIMES, resolve
+from swapboard.runtimes.manifest import RUNTIMES, UnsupportedPlatformError, resolve
 
 prefix_option = click.option(
     "--prefix",
@@ -19,7 +19,22 @@ def _runtimes_dir(prefix: Path | None) -> Path:
     return layout.runtimes
 
 
-@click.group()
+class RuntimeGroup(click.Group):
+    """Reports an unsupported platform as an error rather than a traceback.
+
+    Pinned builds only exist for macOS. Running these commands anywhere else
+    is a normal thing for a user to try, so it should read as a plain message
+    explaining the alternative.
+    """
+
+    def invoke(self, ctx: click.Context):
+        try:
+            return super().invoke(ctx)
+        except UnsupportedPlatformError as error:
+            raise click.ClickException(str(error)) from error
+
+
+@click.group(cls=RuntimeGroup)
 def main() -> None:
     """Manage the private llama.cpp and llama-swap builds swapboard runs."""
 
