@@ -142,6 +142,14 @@ jobs:
       - name: Ensure uv is installed
         run: command -v uv >/dev/null || brew install uv
 
+      - name: Stop the running services
+        # The API and dashboard agents run from inside this virtualenv, so they
+        # have to stop before it is replaced. Deploying restarts them either
+        # way, so this costs no availability that the deploy would not.
+        run: |
+          test -x "${APP_VENV}/bin/swapboard-deploy" || exit 0
+          "${APP_VENV}/bin/swapboard-deploy" stop
+
       - name: Install the published release
         run: |
           "${APP_VENV}/bin/python" -c \

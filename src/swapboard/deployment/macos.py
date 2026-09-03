@@ -25,6 +25,12 @@ from urllib.request import urlopen
 
 import click
 
+from swapboard.common.network import (
+    DEFAULT_API_PORT,
+    DEFAULT_HOST,
+    DEFAULT_LLAMA_SWAP_PORT,
+    DEFAULT_UI_PORT,
+)
 from swapboard.common.paths import LLAMA_CPP_RUNTIME, LLAMA_SWAP_RUNTIME, Layout
 from swapboard.runtimes import installer
 from swapboard.runtimes.manifest import UnsupportedPlatformError, is_supported
@@ -34,13 +40,6 @@ API_LABEL = "com.swapboard.api"
 UI_LABEL = "com.swapboard.ui"
 # Ordered so dependants stop before what they depend on.
 ALL_LABELS = (UI_LABEL, API_LABEL, LLAMA_SWAP_LABEL)
-
-DEFAULT_API_PORT = 8771
-DEFAULT_LLAMA_SWAP_PORT = 8772
-# 8770 is deliberately avoided: macOS runs com.apple.sharingd there for
-# Continuity and AirDrop, so binding it fails on any Mac.
-DEFAULT_UI_PORT = 8773
-DEFAULT_HOST = "127.0.0.1"
 
 # Deliberately excludes Homebrew: the services must resolve their binaries from
 # the private runtimes directory, never from whatever the host happens to have.
@@ -423,6 +422,22 @@ def deploy(
     )
     MacOSDeployment(layout, options).deploy()
     click.echo(f"swapboard deployed to {layout.prefix}")
+
+
+@main.command()
+@prefix_option
+def stop(prefix: Path | None) -> None:
+    """Stop the services, leaving the installation in place.
+
+    Upgrading replaces the virtualenv the API and dashboard run from, so their
+    agents have to be stopped before that happens rather than afterwards.
+    """
+    layout = _layout_for(prefix)
+    host = MacOSHost(layout)
+    host.validate_host()
+    with host.deployment_lock():
+        host.stop_agents()
+    click.echo(f"swapboard services stopped ({layout.prefix})")
 
 
 @main.command()
