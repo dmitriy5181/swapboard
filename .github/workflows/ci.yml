@@ -103,3 +103,84 @@ jobs:
 
       - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  deploy-macos:
+    name: Deploy to macOS
+    runs-on: [self-hosted, macOS, ARM64]
+    # Deploys what PyPI actually serves, so it cannot run before the publish
+    # succeeded. This also scopes the job to releases without a second
+    # condition that could drift away from the one on publish-pypi.
+    needs: publish-pypi
+    environment: macos
+    timeout-minutes: 60
+    # A deployment replaces running services. Letting a second one cancel it
+    # half way through would leave the host without a working install.
+    concurrency:
+      group: swapboard-macos-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ github.event.release.tag_name }}
+      SWAPBOARD_CONFIG_PATH: ${{ vars.SWAPBOARD_CONFIG_PATH }}
+
+    steps:
+      - name: Validate the deployment configuration
+        run: |
+          install_prefix="${HOME}/.swapboard"
+          config_path="${SWAPBOARD_CONFIG_PATH:-${install_prefix}/llama-swap.yml}"
+          test -f "${config_path}" || {
+            echo "No llama-swap config on this host at ${config_path}" >&2
+            exit 1
+          }
+          {
+            echo "INSTALL_PREFIX=${install_prefix}"
+            echo "APP_VENV=${install_prefix}/venv"
+            echo "SWAPBOARD_CONFIG_PATH=${config_path}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Ensure uv is installed
+        run: command -v uv >/dev/null || brew install uv
+
+      - name: Stop the running services
+        # The API and dashboard agents run from inside this virtualenv, so they
+        # have to stop before it is replaced. Deploying restarts them either
+        # way, so this costs no availability that the deploy would not.
+        run: |
+          test -x "${APP_VENV}/bin/swapboard-deploy" || exit 0
+          "${APP_VENV}/bin/swapboard-deploy" stop --prefix "${INSTALL_PREFIX}"
+
+      - name: Install the published release
+        run: |
+          "${APP_VENV}/bin/python" -c \
+            'import sys; assert sys.version_info[:2] == (3, 14)' 2>/dev/null \
+            || uv venv --clear --python 3.14 "${APP_VENV}"
+          # PyPI does not always serve a version the moment it is published.
+          installed=""
+          for _ in 1 2 3 4 5 6; do
+            if uv pip install --python "${APP_VENV}/bin/python" \
+                --reinstall-package swapboard \
+                "swapboard[all]==${RELEASE_VERSION}"; then
+              installed="yes"
+              break
+            fi
+            sleep 10
+          done
+          test -n "${installed}" || {
+            echo "swapboard ${RELEASE_VERSION} is not installable from PyPI" >&2
+            exit 1
+          }
+          version="$("${APP_VENV}/bin/python" -c \
+            'import importlib.metadata; print(importlib.metadata.version("swapboard"))')"
+          test "${version}" = "${RELEASE_VERSION}" || {
+            echo "Installed ${version}, expected ${RELEASE_VERSION}" >&2
+            exit 1
+          }
+
+      - name: Deploy the launchd services
+        env:
+          SWAPBOARD_HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          "${APP_VENV}/bin/swapboard-deploy" deploy \
+            --prefix "${INSTALL_PREFIX}" \
+            --config "${SWAPBOARD_CONFIG_PATH}"

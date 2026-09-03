@@ -6,8 +6,7 @@ dependency beyond the ASGI stack the service already requires.
 
 import argparse
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8771
+from swapboard.common.network import DEFAULT_API_PORT, DEFAULT_HOST
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -34,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--port",
         type=int,
-        default=DEFAULT_PORT,
-        help=f"Bind port (default: {DEFAULT_PORT}).",
+        default=DEFAULT_API_PORT,
+        help=f"Bind port (default: {DEFAULT_API_PORT}).",
     )
     parser.add_argument(
         "--reload", action="store_true", help="Reload on source changes."

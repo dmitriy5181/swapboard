@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from swapboard.common.network import DEFAULT_API_PORT, DEFAULT_HOST, DEFAULT_UI_PORT
+
 
 class UISettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -9,8 +11,6 @@ class UISettings(BaseSettings):
         populate_by_name=True,
     )
 
-    api_url: str = "http://127.0.0.1:8771"
-    host: str = "127.0.0.1"
-    # 8770 is deliberately avoided: macOS runs com.apple.sharingd there for
-    # Continuity and AirDrop, so binding it fails on any Mac.
-    port: int = 8773
+    api_url: str = f"http://{DEFAULT_HOST}:{DEFAULT_API_PORT}"
+    host: str = DEFAULT_HOST
+    port: int = DEFAULT_UI_PORT

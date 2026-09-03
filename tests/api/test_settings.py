@@ -1,4 +1,5 @@
 from swapboard.api.settings import Settings
+from swapboard.common.network import DEFAULT_LLAMA_SWAP_PORT
 
 
 def test_settings_reads_env(monkeypatch) -> None:
@@ -15,7 +16,7 @@ def test_settings_reads_env(monkeypatch) -> None:
     assert settings.hf_token == "token"
 
 
-def test_settings_falls_back_to_defaults(monkeypatch) -> None:
+def _clear_settings_env(monkeypatch) -> None:
     for name in (
         "SWAPBOARD_LLAMA_SWAP_CONFIG_PATH",
         "SWAPBOARD_LLAMA_SWAP_PORT",
@@ -24,11 +25,26 @@ def test_settings_falls_back_to_defaults(monkeypatch) -> None:
     ):
         monkeypatch.delenv(name, raising=False)
 
+
+def test_settings_defaults_to_the_layout_of_its_own_installation(
+    monkeypatch, tmp_path
+) -> None:
+    """An installed API must find its own config and models unconfigured."""
+    _clear_settings_env(monkeypatch)
+    monkeypatch.setattr("sys.prefix", str(tmp_path / "venv"))
+
     settings = Settings(_env_file=None)
 
-    assert settings.llama_swap_config_path == "/etc/llama-swap/config/config.yaml"
-    assert settings.llama_swap_port == 8080
-    assert settings.models_path == "/models"
+    assert settings.llama_swap_config_path == str(tmp_path / "config/llama-swap.yml")
+    assert settings.models_path == str(tmp_path / "models")
+
+
+def test_settings_falls_back_to_defaults(monkeypatch) -> None:
+    _clear_settings_env(monkeypatch)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.llama_swap_port == DEFAULT_LLAMA_SWAP_PORT
     assert settings.hf_token is None
 
 

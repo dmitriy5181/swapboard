@@ -129,12 +129,3 @@ def test_parse_returns_empty_for_config_without_models(tmp_path: Path) -> None:
     config_path.write_text("healthCheckTimeout: 300\n", encoding="utf-8")
 
     assert parse_model_sources(config_path) == []
-
-
-def test_parse_reads_the_bundled_example_config() -> None:
-    example = Path(__file__).resolve().parents[2] / "llama-swap.example.yml"
-
-    sources = {source.name: source for source in parse_model_sources(example)}
-
-    assert "embeddinggemma-300M" in sources
-    assert len(sources["qwen3.5-4b-q4_k_m"].files) == 2

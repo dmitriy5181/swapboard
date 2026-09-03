@@ -15,17 +15,17 @@ from pathlib import Path
 
 import click
 
+from swapboard.common.network import (
+    DEFAULT_API_PORT,
+    DEFAULT_LLAMA_SWAP_PORT,
+    DEFAULT_UI_PORT,
+)
 from swapboard.common.paths import LLAMA_CPP_RUNTIME, LLAMA_SWAP_RUNTIME, Layout
 from swapboard.runtimes import installer
 from swapboard.runtimes.manifest import is_supported
 
 DEFAULT_PREFIX = Path("data")
 DEFAULT_CONFIG = Path("llama-swap.example.yml")
-DEFAULT_API_PORT = 8771
-DEFAULT_LLAMA_SWAP_PORT = 8772
-# 8770 is deliberately avoided: macOS runs com.apple.sharingd there for
-# Continuity and AirDrop, so binding it fails on any Mac.
-DEFAULT_UI_PORT = 8773
 POLL_INTERVAL = 0.5
 
 

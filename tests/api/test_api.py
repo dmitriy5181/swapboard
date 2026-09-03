@@ -8,8 +8,23 @@ from swapboard.api.service import Downloads, ModelsService
 from swapboard.api.settings import Settings
 from swapboard.common.models import DownloadState
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG = REPO_ROOT / "llama-swap.example.yml"
+DEFAULT_CONFIG = """\
+models:
+  embeddinggemma-300M:
+    cmd: |
+      llama-server --port ${PORT}
+      -m /models/ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
+      --embeddings
+"""
+
+MULTIMODAL_CONFIG = """\
+models:
+  qwen3.5-4b-q4_k_m:
+    cmd: |
+      llama-server --port ${PORT}
+      -m /models/unsloth/Qwen3.5-4B-GGUF/Qwen3.5-4B-Q4_K_M.gguf
+      --mmproj /models/unsloth/Qwen3.5-4B-GGUF/mmproj-F16.gguf
+"""
 
 
 def build_settings(
@@ -17,23 +32,41 @@ def build_settings(
     *,
     llama_swap_port: int = 8080,
     hf_token: str | None = None,
+    config: Path | None = None,
 ) -> Settings:
+    config = config or write_default_config(tmp_models)
     return Settings(
-        llama_swap_config_path=str(CONFIG),
+        llama_swap_config_path=str(config),
         llama_swap_port=llama_swap_port,
         models_path=str(tmp_models),
         hf_token=hf_token,
     )
 
 
-def build_client(tmp_models: Path, llama_swap_port: int = 8080) -> TestClient:
-    settings = build_settings(tmp_models, llama_swap_port=llama_swap_port)
+def build_client(
+    tmp_models: Path, llama_swap_port: int = 8080, *, config: Path | None = None
+) -> TestClient:
+    settings = build_settings(
+        tmp_models, llama_swap_port=llama_swap_port, config=config
+    )
 
     import swapboard.api.main as main
 
     main.settings = settings
     main.service = ModelsService(settings)
     return TestClient(main.app)
+
+
+def write_default_config(directory: Path) -> Path:
+    config = directory / "default.yml"
+    config.write_text(DEFAULT_CONFIG, encoding="utf-8")
+    return config
+
+
+def write_multimodal_config(directory: Path) -> Path:
+    config = directory / "multimodal.yml"
+    config.write_text(MULTIMODAL_CONFIG, encoding="utf-8")
+    return config
 
 
 def test_health_returns_ok(tmp_path: Path) -> None:
@@ -131,7 +164,7 @@ def test_multimodal_model_requires_projector(tmp_path: Path) -> None:
     model_dir = tmp_path / "unsloth" / "Qwen3.5-4B-GGUF"
     model_dir.mkdir(parents=True)
     (model_dir / "Qwen3.5-4B-Q4_K_M.gguf").write_bytes(b"fake-model")
-    client = build_client(tmp_path)
+    client = build_client(tmp_path, config=write_multimodal_config(tmp_path))
 
     missing_projector = client.get("/models/qwen3.5-4b-q4_k_m")
     (model_dir / "mmproj-F16.gguf").write_bytes(b"fake-projector")
@@ -145,7 +178,13 @@ def test_download_fetches_only_missing_projector(tmp_path: Path) -> None:
     model_dir = tmp_path / "unsloth" / "Qwen3.5-4B-GGUF"
     model_dir.mkdir(parents=True)
     (model_dir / "Qwen3.5-4B-Q4_K_M.gguf").write_bytes(b"fake-model")
-    service = ModelsService(build_settings(tmp_path, hf_token="token"))
+    service = ModelsService(
+        build_settings(
+            tmp_path,
+            hf_token="token",
+            config=write_multimodal_config(tmp_path),
+        )
+    )
 
     def download_file(**kwargs: str | None) -> str:
         target = Path(str(kwargs["local_dir"])) / str(kwargs["filename"])
@@ -179,7 +218,9 @@ def test_download_retries_failed_projector_without_fetching_primary_again(
 ) -> None:
     model_dir = tmp_path / "unsloth" / "Qwen3.5-4B-GGUF"
     model_dir.mkdir(parents=True)
-    service = ModelsService(build_settings(tmp_path))
+    service = ModelsService(
+        build_settings(tmp_path, config=write_multimodal_config(tmp_path))
+    )
     requested_filenames: list[str] = []
 
     def download_file(**kwargs: str | None) -> str:

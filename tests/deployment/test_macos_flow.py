@@ -294,6 +294,32 @@ def test_deploy_cli_rejects_a_missing_config(tmp_path, monkeypatch) -> None:
     assert result.exit_code != 0
 
 
+def test_stop_cli_stops_the_agents_without_removing_anything(
+    tmp_path, monkeypatch
+) -> None:
+    """Upgrading replaces the venv the agents run from, so stop must come first."""
+    stopped: list[Path] = []
+    monkeypatch.setattr(macos.MacOSHost, "validate_host", staticmethod(lambda: None))
+    monkeypatch.setattr(macos.MacOSHost, "deployment_lock", lambda self: _nullcontext())
+    monkeypatch.setattr(
+        macos.MacOSHost,
+        "stop_agents",
+        lambda self: stopped.append(self._layout.prefix),
+    )
+    removed: list[str] = []
+    monkeypatch.setattr(
+        macos.installer, "remove", lambda runtime, directory: removed.append(runtime)
+    )
+
+    result = CliRunner().invoke(
+        macos.main, ["stop", "--prefix", str(tmp_path / "prefix")]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert stopped == [tmp_path / "prefix"]
+    assert removed == []
+
+
 def test_uninstall_cli_uses_the_resolved_prefix(tmp_path, monkeypatch) -> None:
     captured: list[Layout] = []
     uninstalled: list[bool] = []
