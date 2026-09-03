@@ -64,7 +64,9 @@ See [`llama-swap.example.yml`](llama-swap.example.yml) for a fuller example.
 Configuration is read from `SWAPBOARD_*` environment variables, covering the
 config file to read, where models are stored, a Hugging Face token for private
 or gated repositories, and the addresses the services bind to.
-[`.env.example`](.env.example) lists them all with their defaults.
+[`.env.example`](.env.example) names every variable, with values suited to
+running from a checkout. Left unset, the paths resolve to the installation the
+running swapboard belongs to, and `--help` reports the ports.
 
 ## API
 
@@ -122,7 +124,7 @@ The pinned runtimes are verified against recorded SHA-256 digests before
 extraction, and can be managed on their own:
 
 ```sh
-swapboard-runtimes install    # or: status, path, remove
+swapboard-runtimes install    # or: status, path llama-server, remove
 ```
 
 Linux is supported for the API and dashboard; for llama-swap itself, use the
