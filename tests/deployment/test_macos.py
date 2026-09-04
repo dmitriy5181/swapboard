@@ -230,6 +230,28 @@ def test_install_config_copies_into_the_prefix(layout, config) -> None:
     assert layout.llama_swap_config.read_text() == "models: {}\n"
 
 
+def test_install_config_accepts_the_managed_config_as_its_source(layout) -> None:
+    layout.config.mkdir(parents=True)
+    layout.llama_swap_config.write_text("models: {}\n")
+    deployment = build(layout, layout.llama_swap_config)
+
+    deployment._install_config()
+
+    assert layout.llama_swap_config.read_text() == "models: {}\n"
+
+
+def test_install_config_accepts_a_hard_link_to_the_managed_config(layout) -> None:
+    layout.config.mkdir(parents=True)
+    layout.llama_swap_config.write_text("models: {}\n")
+    config_alias = layout.prefix / "llama-swap.yml"
+    config_alias.hardlink_to(layout.llama_swap_config)
+    deployment = build(layout, config_alias)
+
+    deployment._install_config()
+
+    assert layout.llama_swap_config.read_text() == "models: {}\n"
+
+
 def test_prepare_directories_creates_the_prefix_tree(layout, config) -> None:
     build(layout, config)._prepare_directories()
 

@@ -248,7 +248,10 @@ class MacOSDeployment(MacOSHost):
             directory.mkdir(parents=True, exist_ok=True)
 
     def _install_config(self) -> None:
-        shutil.copyfile(self._options.config, self._layout.llama_swap_config)
+        try:
+            shutil.copyfile(self._options.config, self._layout.llama_swap_config)
+        except shutil.SameFileError:
+            return
 
     def _llama_swap_agent(self) -> LaunchAgent:
         return LaunchAgent(

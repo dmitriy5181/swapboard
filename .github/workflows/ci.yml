@@ -96,7 +96,7 @@ jobs:
 
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -129,13 +129,17 @@ jobs:
         run: |
           install_prefix="${HOME}/.swapboard"
           config_path="${SWAPBOARD_CONFIG_PATH:-${install_prefix}/llama-swap.yml}"
+          app_venv="${install_prefix}/venv"
+          for path in "${config_path}" "${app_venv}" "${install_prefix}" "${HOME}"; do
+            echo "::add-mask::${path}"
+          done
           test -f "${config_path}" || {
             echo "No llama-swap config on this host at ${config_path}" >&2
             exit 1
           }
           {
             echo "INSTALL_PREFIX=${install_prefix}"
-            echo "APP_VENV=${install_prefix}/venv"
+            echo "APP_VENV=${app_venv}"
             echo "SWAPBOARD_CONFIG_PATH=${config_path}"
           } >>"${GITHUB_ENV}"
 
