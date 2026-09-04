@@ -31,7 +31,7 @@ def partial_models() -> str:
     return render_template("partials/models.html", **_context())
 
 
-@models_bp.post("/models/<name>/download")
+@models_bp.post("/models/<path:name>/download")
 def download_model(name: str) -> str:
     """Starts a download and re-renders the section with the outcome.
 

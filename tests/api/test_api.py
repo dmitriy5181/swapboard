@@ -26,6 +26,14 @@ models:
       --mmproj /models/unsloth/Qwen3.5-4B-GGUF/mmproj-F16.gguf
 """
 
+NAMESPACED_CONFIG = """\
+models:
+  "local/embeddinggemma-300M":
+    cmd: |
+      llama-server --port ${PORT}
+      -m /models/ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
+"""
+
 
 def build_settings(
     tmp_models: Path,
@@ -75,6 +83,12 @@ def write_default_config(directory: Path) -> Path:
 def write_multimodal_config(directory: Path) -> Path:
     config = directory / "multimodal.yml"
     config.write_text(MULTIMODAL_CONFIG, encoding="utf-8")
+    return config
+
+
+def write_namespaced_config(directory: Path) -> Path:
+    config = directory / "namespaced.yml"
+    config.write_text(NAMESPACED_CONFIG, encoding="utf-8")
     return config
 
 
@@ -167,6 +181,28 @@ def test_present_when_file_exists(tmp_path: Path) -> None:
     assert body["repo_id"] == "ggml-org/embeddinggemma-300M-GGUF"
     assert body["present"] is True
     assert body["path"] == str(model_path)
+
+
+def test_get_model_accepts_a_name_containing_a_slash(tmp_path: Path) -> None:
+    """llama-swap namespaces models, so a name can span several path segments."""
+    client = build_client(tmp_path, config=write_namespaced_config(tmp_path))
+
+    response = client.get("/models/local/embeddinggemma-300M")
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "local/embeddinggemma-300M"
+
+
+def test_download_accepts_a_name_containing_a_slash(tmp_path: Path) -> None:
+    model_dir = tmp_path / "ggml-org" / "embeddinggemma-300M-GGUF"
+    model_dir.mkdir(parents=True)
+    (model_dir / "embeddinggemma-300M-Q8_0.gguf").write_bytes(b"fake-gguf")
+    client = build_client(tmp_path, config=write_namespaced_config(tmp_path))
+
+    response = client.post("/models/local/embeddinggemma-300M/download")
+
+    assert response.status_code == 200
+    assert response.json() == {"started": False, "message": "Model already present"}
 
 
 def test_empty_file_does_not_count_as_present(tmp_path: Path) -> None:

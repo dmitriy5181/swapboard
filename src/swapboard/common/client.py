@@ -1,6 +1,7 @@
 """Synchronous HTTP client for a swapboard API instance."""
 
 import logging
+from urllib.parse import quote
 
 import httpx
 
@@ -41,12 +42,12 @@ class SwapboardClient:
         return [ModelStatus.model_validate(item) for item in response.json()]
 
     def get_model(self, name: str) -> ModelStatus:
-        response = self._client.get(f"/models/{name}")
+        response = self._client.get(_model_path(name))
         response.raise_for_status()
         return ModelStatus.model_validate(response.json())
 
     def download_model(self, name: str) -> DownloadResponse:
-        response = self._client.post(f"/models/{name}/download")
+        response = self._client.post(f"{_model_path(name)}/download")
         response.raise_for_status()
         return DownloadResponse.model_validate(response.json())
 
@@ -78,3 +79,14 @@ class SwapboardClient:
         behind a reverse proxy the API reports the address to use instead.
         """
         return str(httpx.URL(self._base_url).copy_with(port=port, path="/v1"))
+
+
+def _model_path(name: str) -> str:
+    """Builds the URL for a single model, escaping everything but slashes.
+
+    llama-swap names may contain any character. Slashes stay literal because
+    the API matches them as part of the path and proxies routinely reject or
+    rewrite an encoded one; the rest is escaped so a name containing '?' or
+    '#' cannot silently truncate the request.
+    """
+    return f"/models/{quote(name, safe='/')}"

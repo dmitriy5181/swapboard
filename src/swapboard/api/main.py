@@ -23,12 +23,15 @@ def get_info() -> InferenceInfo:
     )
 
 
+# llama-swap model names may contain slashes, so the two routes below match the
+# rest of the path instead of a single segment. That makes them greedy: any
+# further route under /models has to be declared above them to stay reachable.
 @app.get("/models", response_model=list[ModelStatus])
 def list_models() -> list[ModelStatus]:
     return service.list_status()
 
 
-@app.get("/models/{name}", response_model=ModelStatus)
+@app.get("/models/{name:path}", response_model=ModelStatus)
 def get_model(name: str) -> ModelStatus:
     status = service.get_status(name)
     if status is None:
@@ -36,7 +39,7 @@ def get_model(name: str) -> ModelStatus:
     return status
 
 
-@app.post("/models/{name}/download", response_model=DownloadResponse)
+@app.post("/models/{name:path}/download", response_model=DownloadResponse)
 def download_model(name: str) -> DownloadResponse:
     outcome = service.start_download(name)
     if not outcome.found:
