@@ -79,6 +79,7 @@ def test_llama_swap_agent_runs_the_private_binary(layout, config) -> None:
         str(layout.llama_swap_bin),
         "--config",
         str(layout.llama_swap_config),
+        "--watch-config",
         "--listen",
         "127.0.0.1:8772",
     ]

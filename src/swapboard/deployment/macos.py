@@ -260,6 +260,9 @@ class MacOSDeployment(MacOSHost):
                 str(self._layout.llama_swap_bin),
                 "--config",
                 str(self._layout.llama_swap_config),
+                # Config edits apply without a redeploy. Reloading stops the
+                # models llama-swap currently has loaded.
+                "--watch-config",
                 "--listen",
                 f"{self._options.llama_swap_host}:{self._options.llama_swap_port}",
             ],

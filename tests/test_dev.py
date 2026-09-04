@@ -17,6 +17,7 @@ def test_llama_swap_command_binds_locally(tmp_path: Path) -> None:
         "/runtimes/llama-swap",
         "--config",
         str(config),
+        "--watch-config",
         "--listen",
         "127.0.0.1:8772",
     ]
