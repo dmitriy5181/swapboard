@@ -26,16 +26,18 @@ class Settings(BaseSettings):
     llama_swap_port: int = DEFAULT_LLAMA_SWAP_PORT
     models_path: str = Field(default_factory=lambda: str(Layout.default().models))
     hf_token: str | None = None
+    public_endpoint_url: str | None = None
 
-    @field_validator("hf_token", mode="before")
+    @field_validator("hf_token", "public_endpoint_url", mode="before")
     @classmethod
-    def normalize_blank_hf_token(cls, value: object) -> object:
-        """Treats an empty token as absent.
+    def normalize_blank(cls, value: object) -> object:
+        """Treats an empty value as absent.
 
-        Deployment templates commonly leave the variable defined but blank, and
-        passing that through would make huggingface_hub send an empty
-        Authorization header instead of falling back to anonymous access.
+        Deployment templates commonly leave these variables defined but blank.
+        A blank token would make huggingface_hub send an empty Authorization
+        header instead of falling back to anonymous access, and a blank
+        endpoint would hide the derived one behind an empty string.
         """
-        if isinstance(value, str) and not value.strip():
-            return None
+        if isinstance(value, str):
+            return value.strip() or None
         return value

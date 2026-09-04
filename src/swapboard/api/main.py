@@ -17,7 +17,10 @@ def health() -> dict[str, str]:
 
 @app.get("/info", response_model=InferenceInfo)
 def get_info() -> InferenceInfo:
-    return InferenceInfo(port=settings.llama_swap_port)
+    return InferenceInfo(
+        port=settings.llama_swap_port,
+        endpoint_url=settings.public_endpoint_url,
+    )
 
 
 @app.get("/models", response_model=list[ModelStatus])

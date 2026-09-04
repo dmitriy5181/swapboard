@@ -184,6 +184,7 @@ jobs:
       - name: Deploy the launchd services
         env:
           SWAPBOARD_HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SWAPBOARD_PUBLIC_ENDPOINT_URL: ${{ vars.SWAPBOARD_PUBLIC_ENDPOINT_URL }}
         run: |
           "${APP_VENV}/bin/swapboard-deploy" deploy \
             --prefix "${INSTALL_PREFIX}" \

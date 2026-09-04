@@ -61,7 +61,7 @@ class SwapboardClient:
             return GatewayStatus(
                 status=ServiceStatus.ok,
                 info=info,
-                endpoint_url=self._endpoint_url(info.port),
+                endpoint_url=info.endpoint_url or self._endpoint_url(info.port),
                 health=self.get_health(),
                 models=self.list_models(),
             )
@@ -74,5 +74,7 @@ class SwapboardClient:
 
         llama-swap listens on a different port of the same host, and only the
         API knows which one, so the base URL is reused with the port swapped.
+        This is the fallback for installations that publish no public endpoint;
+        behind a reverse proxy the API reports the address to use instead.
         """
         return str(httpx.URL(self._base_url).copy_with(port=port, path="/v1"))

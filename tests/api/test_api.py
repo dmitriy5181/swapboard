@@ -33,6 +33,7 @@ def build_settings(
     llama_swap_port: int = 8080,
     hf_token: str | None = None,
     config: Path | None = None,
+    public_endpoint_url: str | None = None,
 ) -> Settings:
     config = config or write_default_config(tmp_models)
     return Settings(
@@ -40,14 +41,22 @@ def build_settings(
         llama_swap_port=llama_swap_port,
         models_path=str(tmp_models),
         hf_token=hf_token,
+        public_endpoint_url=public_endpoint_url,
     )
 
 
 def build_client(
-    tmp_models: Path, llama_swap_port: int = 8080, *, config: Path | None = None
+    tmp_models: Path,
+    llama_swap_port: int = 8080,
+    *,
+    config: Path | None = None,
+    public_endpoint_url: str | None = None,
 ) -> TestClient:
     settings = build_settings(
-        tmp_models, llama_swap_port=llama_swap_port, config=config
+        tmp_models,
+        llama_swap_port=llama_swap_port,
+        config=config,
+        public_endpoint_url=public_endpoint_url,
     )
 
     import swapboard.api.main as main
@@ -97,7 +106,16 @@ def test_info_returns_configured_port(tmp_path: Path) -> None:
     response = client.get("/info")
 
     assert response.status_code == 200
-    assert response.json() == {"port": 9090}
+    assert response.json() == {"port": 9090, "endpoint_url": None}
+
+
+def test_info_reports_the_public_endpoint_when_configured(tmp_path: Path) -> None:
+    """Behind a reverse proxy the address users need is not the local one."""
+    client = build_client(tmp_path, public_endpoint_url="https://inference.test/v1")
+
+    response = client.get("/info")
+
+    assert response.json()["endpoint_url"] == "https://inference.test/v1"
 
 
 def test_get_unknown_model_returns_404(tmp_path: Path) -> None:

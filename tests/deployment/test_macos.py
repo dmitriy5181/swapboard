@@ -156,6 +156,33 @@ def test_blank_hf_token_is_not_passed_through(layout, config, token: str) -> Non
     assert "SWAPBOARD_HF_TOKEN" not in agent.environment_variables
 
 
+def test_public_endpoint_url_is_passed_through_when_set(layout, config) -> None:
+    deployment = build(
+        layout,
+        config,
+        environment={"SWAPBOARD_PUBLIC_ENDPOINT_URL": "https://inference.test/v1"},
+    )
+
+    agent = agent_by_label(deployment, API_LABEL)
+
+    assert (
+        agent.environment_variables["SWAPBOARD_PUBLIC_ENDPOINT_URL"]
+        == "https://inference.test/v1"
+    )
+
+
+@pytest.mark.parametrize("url", ["", "   "])
+def test_blank_public_endpoint_url_is_not_passed_through(layout, config, url) -> None:
+    """An unconfigured workflow variable reaches the deploy step as an empty string."""
+    deployment = build(
+        layout, config, environment={"SWAPBOARD_PUBLIC_ENDPOINT_URL": url}
+    )
+
+    agent = agent_by_label(deployment, API_LABEL)
+
+    assert "SWAPBOARD_PUBLIC_ENDPOINT_URL" not in agent.environment_variables
+
+
 def test_ui_agent_points_at_the_local_api(layout, config) -> None:
     agent = agent_by_label(build(layout, config, api_port=9001, ui_port=9000), UI_LABEL)
 

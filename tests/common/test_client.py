@@ -106,6 +106,24 @@ def test_endpoint_url_swaps_port_and_keeps_scheme(base_url: str, expected: str) 
     assert client.get_status().endpoint_url == expected
 
 
+def test_get_status_prefers_the_endpoint_reported_by_the_api() -> None:
+    """A proxied install publishes an address the local one cannot be derived from."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info":
+            return httpx.Response(
+                200,
+                json={"port": 9000, "endpoint_url": "https://inference.test/v1"},
+            )
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(200, json=[])
+
+    client = build_client(handler, "http://gateway.test:8400")
+
+    assert client.get_status().endpoint_url == "https://inference.test/v1"
+
+
 def test_get_status_reports_unavailable_on_transport_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)

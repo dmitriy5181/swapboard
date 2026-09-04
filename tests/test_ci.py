@@ -124,6 +124,21 @@ def test_deploy_step_passes_prefix_and_config(tmp_path: Path) -> None:
     )
 
 
+def test_deploy_step_forwards_the_public_endpoint_variable() -> None:
+    """Dropping this pass-through silently reverts the dashboard to localhost."""
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
+    deploy = next(
+        step
+        for step in workflow["jobs"]["deploy-macos"]["steps"]
+        if step["name"] == "Deploy the launchd services"
+    )
+
+    assert (
+        deploy["env"]["SWAPBOARD_PUBLIC_ENDPOINT_URL"]
+        == "${{ vars.SWAPBOARD_PUBLIC_ENDPOINT_URL }}"
+    )
+
+
 def test_publish_uses_the_node_24_artifact_action() -> None:
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
     download = next(
