@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from swapboard.common.models import (
@@ -160,6 +162,20 @@ def test_download_starts_and_reports_success(stub) -> None:
     assert stub.downloaded == ["embeddinggemma-300M"]
     assert b"Download started" in response.data
     assert b"alert-success" in response.data
+
+
+def test_download_button_of_a_namespaced_model_is_reachable() -> None:
+    """A slashed name has to survive url_for and still match the download route."""
+    stub = StubClient(online(model(name="local/embeddinggemma-300M")))
+    client = build_client(stub)
+    partial = client.get("/partials/models")
+    match = re.search(rb'hx-post="([^"]+)"', partial.data)
+    assert match is not None
+
+    response = client.post(match.group(1).decode())
+
+    assert response.status_code == 200
+    assert stub.downloaded == ["local/embeddinggemma-300M"]
 
 
 def test_download_already_present_reports_information() -> None:

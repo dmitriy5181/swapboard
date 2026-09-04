@@ -67,8 +67,14 @@ class DeployOptions:
 
     @property
     def hf_token(self) -> str | None:
-        token = self.environment.get("SWAPBOARD_HF_TOKEN", "").strip()
-        return token or None
+        return self._optional("SWAPBOARD_HF_TOKEN")
+
+    @property
+    def public_endpoint_url(self) -> str | None:
+        return self._optional("SWAPBOARD_PUBLIC_ENDPOINT_URL")
+
+    def _optional(self, name: str) -> str | None:
+        return self.environment.get(name, "").strip() or None
 
 
 @dataclass(frozen=True)
@@ -260,6 +266,9 @@ class MacOSDeployment(MacOSHost):
                 str(self._layout.llama_swap_bin),
                 "--config",
                 str(self._layout.llama_swap_config),
+                # Config edits apply without a redeploy. Reloading stops the
+                # models llama-swap currently has loaded.
+                "--watch-config",
                 "--listen",
                 f"{self._options.llama_swap_host}:{self._options.llama_swap_port}",
             ],
@@ -283,6 +292,9 @@ class MacOSDeployment(MacOSHost):
         token = self._options.hf_token
         if token:
             environment["SWAPBOARD_HF_TOKEN"] = token
+        endpoint_url = self._options.public_endpoint_url
+        if endpoint_url:
+            environment["SWAPBOARD_PUBLIC_ENDPOINT_URL"] = endpoint_url
         return LaunchAgent(
             label=API_LABEL,
             program_arguments=[

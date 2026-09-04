@@ -7,6 +7,7 @@ def test_settings_reads_env(monkeypatch) -> None:
     monkeypatch.setenv("SWAPBOARD_LLAMA_SWAP_PORT", "9772")
     monkeypatch.setenv("SWAPBOARD_MODELS_PATH", "/tmp/models")
     monkeypatch.setenv("SWAPBOARD_HF_TOKEN", "token")
+    monkeypatch.setenv("SWAPBOARD_PUBLIC_ENDPOINT_URL", "  https://inference.test/v1  ")
 
     settings = Settings()
 
@@ -14,6 +15,7 @@ def test_settings_reads_env(monkeypatch) -> None:
     assert settings.llama_swap_port == 9772
     assert settings.models_path == "/tmp/models"
     assert settings.hf_token == "token"
+    assert settings.public_endpoint_url == "https://inference.test/v1"
 
 
 def _clear_settings_env(monkeypatch) -> None:
@@ -22,6 +24,7 @@ def _clear_settings_env(monkeypatch) -> None:
         "SWAPBOARD_LLAMA_SWAP_PORT",
         "SWAPBOARD_MODELS_PATH",
         "SWAPBOARD_HF_TOKEN",
+        "SWAPBOARD_PUBLIC_ENDPOINT_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -54,6 +57,15 @@ def test_settings_normalizes_blank_hf_token(monkeypatch) -> None:
     settings = Settings()
 
     assert settings.hf_token is None
+
+
+def test_settings_normalizes_blank_public_endpoint_url(monkeypatch) -> None:
+    """An unset workflow variable arrives as an empty string, not as absent."""
+    monkeypatch.setenv("SWAPBOARD_PUBLIC_ENDPOINT_URL", "")
+
+    settings = Settings()
+
+    assert settings.public_endpoint_url is None
 
 
 def test_settings_accepts_keyword_arguments() -> None:

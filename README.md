@@ -68,20 +68,6 @@ or gated repositories, and the addresses the services bind to.
 running from a checkout. Left unset, the paths resolve to the installation the
 running swapboard belongs to, and `--help` reports the ports.
 
-## API
-
-| Method | Path | Returns |
-| --- | --- | --- |
-| `GET` | `/health` | `{"status": "ok"}` |
-| `GET` | `/info` | Port llama-swap is serving on |
-| `GET` | `/models` | Status of every configured model |
-| `GET` | `/models/{name}` | Status of one model |
-| `POST` | `/models/{name}/download` | Starts a background download |
-
-Downloads run in the background; poll `/models/{name}` for progress. A model
-already downloading will not be started twice, and a failed download can be
-retried without refetching files that already arrived.
-
 ### Python client
 
 ```python

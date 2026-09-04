@@ -124,7 +124,14 @@ def resolve_runtime(
 
 
 def build_llama_swap_command(binary: str, config: Path, port: int) -> list[str]:
-    return [binary, "--config", str(config), "--listen", f"127.0.0.1:{port}"]
+    return [
+        binary,
+        "--config",
+        str(config),
+        "--watch-config",
+        "--listen",
+        f"127.0.0.1:{port}",
+    ]
 
 
 def build_api_command(port: int, reload: bool) -> list[str]:

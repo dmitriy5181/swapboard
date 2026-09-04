@@ -66,6 +66,38 @@ def test_download_model_posts_and_parses() -> None:
     assert result.message == "Download started"
 
 
+def test_download_model_sends_a_slashed_name_as_path_segments() -> None:
+    """Encoding the slash would make proxies and the API reject the request."""
+    seen: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path)
+        return httpx.Response(
+            200, json={"started": True, "message": "Download started"}
+        )
+
+    client = build_client(handler)
+
+    client.download_model("local/qwen3.6-35b-a3b")
+
+    assert seen == [b"/models/local/qwen3.6-35b-a3b/download"]
+
+
+def test_get_model_escapes_characters_that_would_truncate_the_path() -> None:
+    """Left raw, everything from '?' onwards is dropped from the request."""
+    seen: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path)
+        return httpx.Response(200, json=MODEL_PAYLOAD)
+
+    client = build_client(handler)
+
+    client.get_model("weird?name#frag")
+
+    assert seen == [b"/models/weird%3Fname%23frag"]
+
+
 def test_get_status_aggregates_every_endpoint() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/info":
@@ -104,6 +136,24 @@ def test_endpoint_url_swaps_port_and_keeps_scheme(base_url: str, expected: str) 
     client = build_client(handler, base_url)
 
     assert client.get_status().endpoint_url == expected
+
+
+def test_get_status_prefers_the_endpoint_reported_by_the_api() -> None:
+    """A proxied install publishes an address the local one cannot be derived from."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info":
+            return httpx.Response(
+                200,
+                json={"port": 9000, "endpoint_url": "https://inference.test/v1"},
+            )
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(200, json=[])
+
+    client = build_client(handler, "http://gateway.test:8400")
+
+    assert client.get_status().endpoint_url == "https://inference.test/v1"
 
 
 def test_get_status_reports_unavailable_on_transport_error() -> None:

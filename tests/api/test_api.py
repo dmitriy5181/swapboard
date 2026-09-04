@@ -26,6 +26,14 @@ models:
       --mmproj /models/unsloth/Qwen3.5-4B-GGUF/mmproj-F16.gguf
 """
 
+NAMESPACED_CONFIG = """\
+models:
+  "local/embeddinggemma-300M":
+    cmd: |
+      llama-server --port ${PORT}
+      -m /models/ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf
+"""
+
 
 def build_settings(
     tmp_models: Path,
@@ -33,6 +41,7 @@ def build_settings(
     llama_swap_port: int = 8080,
     hf_token: str | None = None,
     config: Path | None = None,
+    public_endpoint_url: str | None = None,
 ) -> Settings:
     config = config or write_default_config(tmp_models)
     return Settings(
@@ -40,14 +49,22 @@ def build_settings(
         llama_swap_port=llama_swap_port,
         models_path=str(tmp_models),
         hf_token=hf_token,
+        public_endpoint_url=public_endpoint_url,
     )
 
 
 def build_client(
-    tmp_models: Path, llama_swap_port: int = 8080, *, config: Path | None = None
+    tmp_models: Path,
+    llama_swap_port: int = 8080,
+    *,
+    config: Path | None = None,
+    public_endpoint_url: str | None = None,
 ) -> TestClient:
     settings = build_settings(
-        tmp_models, llama_swap_port=llama_swap_port, config=config
+        tmp_models,
+        llama_swap_port=llama_swap_port,
+        config=config,
+        public_endpoint_url=public_endpoint_url,
     )
 
     import swapboard.api.main as main
@@ -66,6 +83,12 @@ def write_default_config(directory: Path) -> Path:
 def write_multimodal_config(directory: Path) -> Path:
     config = directory / "multimodal.yml"
     config.write_text(MULTIMODAL_CONFIG, encoding="utf-8")
+    return config
+
+
+def write_namespaced_config(directory: Path) -> Path:
+    config = directory / "namespaced.yml"
+    config.write_text(NAMESPACED_CONFIG, encoding="utf-8")
     return config
 
 
@@ -97,7 +120,16 @@ def test_info_returns_configured_port(tmp_path: Path) -> None:
     response = client.get("/info")
 
     assert response.status_code == 200
-    assert response.json() == {"port": 9090}
+    assert response.json() == {"port": 9090, "endpoint_url": None}
+
+
+def test_info_reports_the_public_endpoint_when_configured(tmp_path: Path) -> None:
+    """Behind a reverse proxy the address users need is not the local one."""
+    client = build_client(tmp_path, public_endpoint_url="https://inference.test/v1")
+
+    response = client.get("/info")
+
+    assert response.json()["endpoint_url"] == "https://inference.test/v1"
 
 
 def test_get_unknown_model_returns_404(tmp_path: Path) -> None:
@@ -149,6 +181,28 @@ def test_present_when_file_exists(tmp_path: Path) -> None:
     assert body["repo_id"] == "ggml-org/embeddinggemma-300M-GGUF"
     assert body["present"] is True
     assert body["path"] == str(model_path)
+
+
+def test_get_model_accepts_a_name_containing_a_slash(tmp_path: Path) -> None:
+    """llama-swap namespaces models, so a name can span several path segments."""
+    client = build_client(tmp_path, config=write_namespaced_config(tmp_path))
+
+    response = client.get("/models/local/embeddinggemma-300M")
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "local/embeddinggemma-300M"
+
+
+def test_download_accepts_a_name_containing_a_slash(tmp_path: Path) -> None:
+    model_dir = tmp_path / "ggml-org" / "embeddinggemma-300M-GGUF"
+    model_dir.mkdir(parents=True)
+    (model_dir / "embeddinggemma-300M-Q8_0.gguf").write_bytes(b"fake-gguf")
+    client = build_client(tmp_path, config=write_namespaced_config(tmp_path))
+
+    response = client.post("/models/local/embeddinggemma-300M/download")
+
+    assert response.status_code == 200
+    assert response.json() == {"started": False, "message": "Model already present"}
 
 
 def test_empty_file_does_not_count_as_present(tmp_path: Path) -> None:

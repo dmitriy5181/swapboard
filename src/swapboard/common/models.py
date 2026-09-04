@@ -69,6 +69,7 @@ class DownloadResponse(BaseModel):
 
 class InferenceInfo(BaseModel):
     port: int
+    endpoint_url: str | None = None
 
 
 class GatewayStatus(BaseModel):
