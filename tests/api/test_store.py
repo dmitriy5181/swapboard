@@ -42,6 +42,14 @@ def test_size_of_a_missing_model_is_zero(tmp_path: Path) -> None:
     assert ModelStore(tmp_path).size_of(source("acme/demo-GGUF/demo.gguf")) == 0
 
 
+def test_repository_directory_excludes_a_nested_filename(tmp_path: Path) -> None:
+    model_file = source("acme/demo-GGUF/MTP/draft.gguf").primary_file
+
+    directory = ModelStore(tmp_path).repository_directory(model_file)
+
+    assert directory == tmp_path / "acme/demo-GGUF"
+
+
 def test_remove_deletes_the_files_and_the_emptied_directory(tmp_path: Path) -> None:
     gguf(tmp_path, "acme/demo-GGUF/demo.gguf")
     gguf(tmp_path, "acme/demo-GGUF/mmproj.gguf")

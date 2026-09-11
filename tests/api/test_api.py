@@ -29,6 +29,17 @@ models:
       --mmproj /models/unsloth/Qwen3.5-4B-GGUF/mmproj-F16.gguf
 """
 
+MTP_CONFIG = """\
+models:
+  qwen3.8-27b:
+    cmd: |
+      llama-server --port ${PORT}
+      -m ${models_dir}/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q6_K.gguf
+      --mmproj ${models_dir}/unsloth/Qwen3.8-27B-GGUF/mmproj-F16.gguf
+      --spec-draft-model ${models_dir}/unsloth/Qwen3.8-27B-GGUF/MTP/mtp-Q4_0.gguf
+      --spec-type draft-mtp
+"""
+
 NAMESPACED_CONFIG = """\
 models:
   "local/embeddinggemma-300M":
@@ -104,6 +115,12 @@ def write_default_config(directory: Path) -> Path:
 def write_multimodal_config(directory: Path) -> Path:
     config = directory / "multimodal.yml"
     config.write_text(MULTIMODAL_CONFIG, encoding="utf-8")
+    return config
+
+
+def write_mtp_config(directory: Path) -> Path:
+    config = directory / "mtp.yml"
+    config.write_text(MTP_CONFIG, encoding="utf-8")
     return config
 
 
@@ -283,6 +300,44 @@ def test_download_fetches_only_missing_projector(tmp_path: Path) -> None:
         local_dir=str(model_dir),
         token="token",
     )
+    assert status is not None
+    assert status.present is True
+    assert status.download_state == DownloadState.COMPLETED
+
+
+def test_download_fetches_nested_mtp_draft_into_the_repository(
+    tmp_path: Path,
+) -> None:
+    model_dir = tmp_path / "unsloth/Qwen3.8-27B-GGUF"
+    model_dir.mkdir(parents=True)
+    (model_dir / "Qwen3.8-27B-Q6_K.gguf").write_bytes(b"fake-model")
+    (model_dir / "mmproj-F16.gguf").write_bytes(b"fake-projector")
+    service = build_service(build_settings(tmp_path, config=write_mtp_config(tmp_path)))
+
+    def download_file(**kwargs: str | None) -> str:
+        target = Path(str(kwargs["local_dir"])) / str(kwargs["filename"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"fake-draft")
+        return str(target)
+
+    with (
+        patch(
+            "swapboard.api.service.hf_hub_download",
+            side_effect=download_file,
+        ) as download,
+        patch.object(threading.Thread, "start", lambda thread: thread.run()),
+    ):
+        outcome = service.start_download("qwen3.8-27b")
+
+    status = service.get_status("qwen3.8-27b")
+    assert outcome.started is True
+    download.assert_called_once_with(
+        repo_id="unsloth/Qwen3.8-27B-GGUF",
+        filename="MTP/mtp-Q4_0.gguf",
+        local_dir=str(model_dir),
+        token=None,
+    )
+    assert (model_dir / "MTP/mtp-Q4_0.gguf").is_file()
     assert status is not None
     assert status.present is True
     assert status.download_state == DownloadState.COMPLETED

@@ -2,11 +2,31 @@
 
 import os
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from swapboard.common.models import ModelFile, ModelSource
+
+_MODEL_FLAGS = ("-m", "--model")
+_PROJECTOR_FLAGS = ("--mmproj",)
+_DRAFT_FLAGS = ("--spec-draft-model", "-md", "--model-draft")
+_COMPANION_FLAGS = (_PROJECTOR_FLAGS, _DRAFT_FLAGS)
+_REPOSITORY_PARTS = 2
+_PRIMARY_PATH_PARTS = _REPOSITORY_PARTS + 1
+
+
+@dataclass(frozen=True)
+class _ModelCommand:
+    """The model files one llama-server command line points at."""
+
+    primary: str
+    companions: tuple[str, ...]
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        return (self.primary, *self.companions)
 
 
 def load_config(config_path: str | os.PathLike[str]) -> object:
@@ -20,12 +40,9 @@ def model_sources(config: object) -> list[ModelSource]:
     Models whose command line cannot be resolved are skipped rather than
     reported, because swapboard can only manage files it knows how to fetch.
     """
-    if not isinstance(config, dict):
-        return []
-
     sources: list[ModelSource] = []
-    for name, definition in (config.get("models") or {}).items():
-        source = _parse_model_source(name, definition or {})
+    for name, definition in _models_of(config).items():
+        source = _parse_model_source(name, definition)
         if source is not None:
             sources.append(source)
     return sources
@@ -38,82 +55,111 @@ def model_paths_by_name(config: object) -> dict[str, list[str]]:
     is still reported: swapboard cannot download that file, but it must know
     the file is spoken for before offering to delete it.
     """
-    if not isinstance(config, dict):
-        return {}
-
     paths_by_name: dict[str, list[str]] = {}
-    for name, definition in (config.get("models") or {}).items():
-        cmd = definition.get("cmd") if isinstance(definition, dict) else None
-        model_paths = _extract_model_paths(cmd) if isinstance(cmd, str) else None
-        if model_paths:
-            paths_by_name[name] = list(model_paths)
+    for name, definition in _models_of(config).items():
+        command = _parse_command(definition)
+        if command is not None:
+            paths_by_name[name] = list(command.paths)
     return paths_by_name
 
 
-def _parse_model_source(name: str, definition: dict[str, object]) -> ModelSource | None:
-    cmd = definition.get("cmd")
+def _models_of(config: object) -> dict:
+    if not isinstance(config, dict):
+        return {}
+    models = config.get("models")
+    return models if isinstance(models, dict) else {}
+
+
+def _parse_model_source(name: str, definition: object) -> ModelSource | None:
+    command = _parse_command(definition)
+    if command is None:
+        return None
+    files = _model_files(command)
+    if files is None:
+        return None
+    return ModelSource(name=name, files=files)
+
+
+def _parse_command(definition: object) -> _ModelCommand | None:
+    """Picks the model, the projector and the draft model off a command line."""
+    cmd = definition.get("cmd") if isinstance(definition, dict) else None
     if not isinstance(cmd, str):
         return None
 
-    model_paths = _extract_model_paths(cmd)
-    if model_paths is None:
+    try:
+        tokens = shlex.split(cmd)
+        primary = _value_for(tokens, _MODEL_FLAGS)
+        companions = tuple(
+            value
+            for flags in _COMPANION_FLAGS
+            if (value := _value_for(tokens, flags)) is not None
+        )
+    except ValueError:
         return None
+    if primary is None:
+        return None
+    return _ModelCommand(primary=primary, companions=companions)
+
+
+def _value_for(tokens: list[str], flags: tuple[str, ...]) -> str | None:
+    """Reads what one option was given, under any of the names it answers to.
+
+    llama.cpp spells a single option several ways -- a draft model arrives as
+    `--spec-draft-model`, `-md` or `--model-draft` -- and accepts both
+    `--flag value` and `--flag=value`. A later occurrence wins, as it does
+    there.
+    """
+    value = None
+    for index, token in enumerate(tokens):
+        if token in flags:
+            if index + 1 >= len(tokens):
+                raise ValueError(f"{token} requires a value")
+            value = tokens[index + 1]
+        for flag in flags:
+            if token.startswith(f"{flag}="):
+                value = token.split("=", 1)[1]
+    return value
+
+
+def _model_files(command: _ModelCommand) -> tuple[ModelFile, ...] | None:
+    """Reads every file of one model, against the directory they all share.
+
+    The primary path ends in `<org>/<repo>/<file>`, so whatever precedes it is
+    the models directory, however the config spells or macro-expands it.
+    Measuring the companions from that same point is what lets one sit deeper
+    in the repository -- a speculative draft model under `MTP/`, say -- instead
+    of being read as a repository of its own.
+    """
+    parts = Path(command.primary).parts
+    if len(parts) < _PRIMARY_PATH_PARTS:
+        return None
+    models_dir = parts[:-_PRIMARY_PATH_PARTS]
 
     files: list[ModelFile] = []
-    for model_path in model_paths:
-        source_parts = _derive_hf_source(model_path)
-        if source_parts is None:
+    for path in command.paths:
+        model_file = _model_file(path, models_dir)
+        if model_file is None:
             return None
-        repo_id, filename, relative_path = source_parts
-        files.append(
-            ModelFile(
-                relative_path=relative_path,
-                repo_id=repo_id,
-                filename=filename,
-            )
-        )
-    return ModelSource(name=name, files=tuple(files))
+        files.append(model_file)
+    return tuple(files)
 
 
-def _extract_model_paths(cmd: str) -> tuple[str, ...] | None:
-    """Pulls the model and optional multimodal projector out of a command line."""
-    tokens = shlex.split(cmd)
-    model_path: str | None = None
-    projector_path: str | None = None
-    for index, token in enumerate(tokens):
-        if token in ("-m", "--model"):
-            if index + 1 >= len(tokens):
-                return None
-            model_path = tokens[index + 1]
-        if token.startswith("--model="):
-            model_path = token.split("=", 1)[1]
-        if token == "--mmproj":
-            if index + 1 >= len(tokens):
-                return None
-            projector_path = tokens[index + 1]
-        if token.startswith("--mmproj="):
-            projector_path = token.split("=", 1)[1]
-
-    if model_path is None:
+def _model_file(path: str, models_dir: tuple[str, ...]) -> ModelFile | None:
+    parts = Path(path).parts
+    if parts[: len(models_dir)] != models_dir:
         return None
-    if projector_path is None:
-        return (model_path,)
-    return model_path, projector_path
 
-
-def _derive_hf_source(model_path: str) -> tuple[str, str, str] | None:
-    """Reads `<org>/<repo>/<filename>` off the tail of a model path.
-
-    Anything ahead of those three components is the local models directory,
-    however it happens to be spelled or macro-expanded in the config.
-    """
-    parts = Path(model_path).parts
-    if len(parts) < 3:
+    within_store = parts[len(models_dir) :]
+    if len(within_store) <= _REPOSITORY_PARTS:
         return None
-    org, repo, filename = parts[-3], parts[-2], parts[-1]
-    if not all(_is_plain(part) for part in (org, repo, filename)):
+    if not all(_is_plain(part) for part in within_store):
         return None
-    return f"{org}/{repo}", filename, f"{org}/{repo}/{filename}"
+
+    repo_id = "/".join(within_store[:_REPOSITORY_PARTS])
+    filename = "/".join(within_store[_REPOSITORY_PARTS:])
+    return ModelFile(
+        relative_path=f"{repo_id}/{filename}", repo_id=repo_id, filename=filename
+    )
 
 
 def _is_plain(part: str) -> bool:

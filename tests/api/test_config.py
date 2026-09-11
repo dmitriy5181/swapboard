@@ -139,6 +139,41 @@ def test_parse_extracts_multimodal_projector(
     assert all(model_file.repo_id == "acme/demo-GGUF" for model_file in source.files)
 
 
+@pytest.mark.parametrize(
+    "draft_argument",
+    [
+        "--spec-draft-model {path}",
+        "--spec-draft-model={path}",
+        "-md {path}",
+        "-md={path}",
+        "--model-draft {path}",
+        "--model-draft={path}",
+    ],
+)
+def test_parse_extracts_nested_speculative_draft_model(
+    tmp_path: Path, draft_argument: str
+) -> None:
+    draft_path = "/models/unsloth/Qwen3.8-27B-GGUF/MTP/mtp-Q4_0.gguf"
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n"
+        "  qwen3.8-27b:\n"
+        "    cmd: |\n"
+        "      llama-server -m "
+        "/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q6_K.gguf\n"
+        f"      {draft_argument.format(path=draft_path)}\n",
+        encoding="utf-8",
+    )
+
+    source = model_sources(load_config(config_path))[0]
+
+    assert source.files[1].repo_id == "unsloth/Qwen3.8-27B-GGUF"
+    assert source.files[1].filename == "MTP/mtp-Q4_0.gguf"
+    assert source.files[1].relative_path == (
+        "unsloth/Qwen3.8-27B-GGUF/MTP/mtp-Q4_0.gguf"
+    )
+
+
 def test_parse_skips_model_with_unresolvable_projector_path(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yml"
     config_path.write_text(
@@ -147,6 +182,24 @@ def test_parse_skips_model_with_unresolvable_projector_path(tmp_path: Path) -> N
         "    cmd: |\n"
         "      llama-server -m /models/acme/demo-GGUF/demo-Q4_K_M.gguf\n"
         "      --mmproj mmproj-F16.gguf\n",
+        encoding="utf-8",
+    )
+
+    assert model_sources(load_config(config_path)) == []
+
+
+@pytest.mark.parametrize(
+    "draft_argument", ["--spec-draft-model", "-md", "--model-draft"]
+)
+def test_parse_skips_model_with_draft_flag_missing_its_path(
+    tmp_path: Path, draft_argument: str
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n"
+        "  demo:\n"
+        "    cmd: llama-server -m /models/acme/demo-GGUF/demo.gguf "
+        f"{draft_argument}\n",
         encoding="utf-8",
     )
 

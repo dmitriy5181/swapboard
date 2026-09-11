@@ -210,11 +210,10 @@ class ModelsService:
             for model_file in source.files:
                 if self._store.has_content(model_file):
                     continue
-                local_dir = self._store.resolve(model_file).parent
                 hf_hub_download(
                     repo_id=model_file.repo_id,
                     filename=model_file.filename,
-                    local_dir=str(local_dir),
+                    local_dir=str(self._store.repository_directory(model_file)),
                     token=self._settings.hf_token,
                 )
             self._downloads.set(

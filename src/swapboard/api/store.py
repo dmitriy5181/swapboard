@@ -22,6 +22,10 @@ class ModelStore:
     def resolve(self, model_file: ModelFile) -> Path:
         return self._within(model_file.relative_path)
 
+    def repository_directory(self, model_file: ModelFile) -> Path:
+        """Returns the local root corresponding to a Hugging Face repository."""
+        return self._within(model_file.repo_id)
+
     def is_present(self, source: ModelSource) -> bool:
         return all(self.has_content(file) for file in source.files)
 
