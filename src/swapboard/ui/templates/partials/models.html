@@ -90,21 +90,24 @@
                                 {% if model.size_bytes %}{{ model.size_bytes | filesizeformat(true) }}{% else %}&mdash;{% endif %}
                             </td>
                             {# A model llama-swap currently holds says more than that its files
-                               are on disk, so the live state stands in for "Available". #}
+                               are on disk, so the live state stands in for "Available". A download
+                               that failed outranks both: it is the only status carrying an error to
+                               act on, and llama-swap reporting `error` for the model it could not
+                               start must not bury the reason it could not. #}
                             {% set live_state = state_badge(model.meta.state) if model.meta else None %}
                             <td>
                                 {% if model.download_state.value == 'downloading' %}
                                 <span class="badge text-bg-secondary">
                                     <span class="spinner-border spinner-border-sm me-1"></span>Downloading
                                 </span>
+                                {% elif model.download_state.value == 'failed' %}
+                                <span class="badge text-bg-danger" title="{{ model.download_error or '' }}">Failed</span>
                                 {% elif live_state %}
                                 <span class="badge text-bg-{{ live_state.style }}" title="{{ live_state.title }}">
                                     <i class="bi {{ live_state.icon }} me-1"></i>{{ live_state.label }}
                                 </span>
                                 {% elif model.present or model.download_state.value == 'completed' %}
                                 <span class="badge text-bg-success">Available</span>
-                                {% elif model.download_state.value == 'failed' %}
-                                <span class="badge text-bg-danger" title="{{ model.download_error or '' }}">Failed</span>
                                 {% else %}
                                 <span class="badge text-bg-secondary">Not downloaded</span>
                                 {% endif %}

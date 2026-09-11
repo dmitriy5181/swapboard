@@ -322,10 +322,32 @@ def test_loaded_model_replaces_the_available_badge() -> None:
     assert b"Available" not in response.data
 
 
-def test_present_model_without_a_live_state_is_available(stub) -> None:
+def test_present_model_without_a_live_state_is_available() -> None:
     stub = StubClient(online(model(present=True, meta=ModelMeta(state="unloaded"))))
 
     assert b"Available" in build_client(stub).get("/partials/models").data
+
+
+def test_failed_download_outranks_the_state_it_caused() -> None:
+    """llama-swap cannot start what never downloaded, and says so as `error`.
+
+    That generic state must not bury the download error, which is the only one
+    of the two telling the user what to actually fix.
+    """
+    stub = StubClient(
+        online(
+            model(
+                download_state=DownloadState.FAILED,
+                download_error="disk full",
+                meta=ModelMeta(state="error"),
+            )
+        )
+    )
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"Failed" in response.data
+    assert b"disk full" in response.data
 
 
 def test_loaded_model_is_marked_as_held_in_memory() -> None:
