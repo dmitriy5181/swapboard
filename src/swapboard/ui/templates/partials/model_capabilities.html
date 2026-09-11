@@ -1,0 +1,13 @@
+{# Icons alone: the name of each capability is carried by the tooltip and by
+   screen-reader text, so the column stays narrow however many a model declares. #}
+{% if model.meta %}
+<div class="d-flex flex-wrap gap-1">
+    {% for capability in model.meta.capabilities %}
+    {% set badge = capability_badge(capability) %}
+    <span class="badge text-bg-light border" title="{{ badge.label }}">
+        <i class="bi {{ badge.icon }}"></i>
+        <span class="visually-hidden">{{ badge.label }}</span>
+    </span>
+    {% endfor %}
+</div>
+{% endif %}

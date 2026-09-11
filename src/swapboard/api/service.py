@@ -66,11 +66,19 @@ class ModelsService:
         self._downloads = Downloads()
 
     def list_status(self) -> list[ModelStatus]:
+        """Lists every configured model, by name rather than by config order.
+
+        The config is written for llama-swap, not for reading, so the order
+        models happen to appear in it says nothing to anyone looking for one.
+        """
         meta_by_name = self._catalog.fetch_meta()
-        return [
-            self._status_for(source, meta_by_name.get(source.name))
-            for source in self._sources()
-        ]
+        return sorted(
+            (
+                self._status_for(source, meta_by_name.get(source.name))
+                for source in self._sources()
+            ),
+            key=lambda status: status.name.casefold(),
+        )
 
     def get_status(self, name: str) -> ModelStatus | None:
         source = self._source(name)
