@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from swapboard.api.config import parse_model_sources
+from swapboard.api.config import load_config, model_paths_by_name, model_sources
 
 
 def test_parse_extracts_all_models_with_hf_paths(tmp_path: Path) -> None:
@@ -20,7 +20,9 @@ def test_parse_extracts_all_models_with_hf_paths(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    sources = {source.name: source for source in parse_model_sources(config_path)}
+    sources = {
+        source.name: source for source in model_sources(load_config(config_path))
+    }
 
     assert set(sources) == {"embed", "reranker"}
 
@@ -52,9 +54,36 @@ def test_parse_skips_models_without_resolvable_path(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    sources = parse_model_sources(config_path)
+    sources = model_sources(load_config(config_path))
 
     assert {source.name for source in sources} == {"valid"}
+
+
+def test_parse_skips_paths_whose_repository_would_be_the_root(tmp_path: Path) -> None:
+    """`/opt/x.gguf` has three parts, the first being `/`, and must not resolve.
+
+    Accepting it would name the repository `/` and produce an absolute relative
+    path, placing the model outside the models directory.
+    """
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        'models:\n  "rooted":\n    cmd: llama-server -m /opt/demo.gguf\n',
+        encoding="utf-8",
+    )
+
+    assert model_sources(load_config(config_path)) == []
+
+
+def test_parse_skips_paths_that_climb_out_of_the_models_directory(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        'models:\n  "climber":\n    cmd: llama-server -m ../../etc/demo.gguf\n',
+        encoding="utf-8",
+    )
+
+    assert model_sources(load_config(config_path)) == []
 
 
 def test_parse_resolves_macro_prefixed_paths(tmp_path: Path) -> None:
@@ -71,7 +100,7 @@ def test_parse_resolves_macro_prefixed_paths(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    sources = parse_model_sources(config_path)
+    sources = model_sources(load_config(config_path))
 
     assert len(sources) == 1
     source = sources[0]
@@ -101,13 +130,48 @@ def test_parse_extracts_multimodal_projector(
         encoding="utf-8",
     )
 
-    source = parse_model_sources(config_path)[0]
+    source = model_sources(load_config(config_path))[0]
 
     assert [model_file.filename for model_file in source.files] == [
         "demo-Q4_K_M.gguf",
         "mmproj-F16.gguf",
     ]
     assert all(model_file.repo_id == "acme/demo-GGUF" for model_file in source.files)
+
+
+@pytest.mark.parametrize(
+    "draft_argument",
+    [
+        "--spec-draft-model {path}",
+        "--spec-draft-model={path}",
+        "-md {path}",
+        "-md={path}",
+        "--model-draft {path}",
+        "--model-draft={path}",
+    ],
+)
+def test_parse_extracts_nested_speculative_draft_model(
+    tmp_path: Path, draft_argument: str
+) -> None:
+    draft_path = "/models/unsloth/Qwen3.8-27B-GGUF/MTP/mtp-Q4_0.gguf"
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n"
+        "  qwen3.8-27b:\n"
+        "    cmd: |\n"
+        "      llama-server -m "
+        "/models/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q6_K.gguf\n"
+        f"      {draft_argument.format(path=draft_path)}\n",
+        encoding="utf-8",
+    )
+
+    source = model_sources(load_config(config_path))[0]
+
+    assert source.files[1].repo_id == "unsloth/Qwen3.8-27B-GGUF"
+    assert source.files[1].filename == "MTP/mtp-Q4_0.gguf"
+    assert source.files[1].relative_path == (
+        "unsloth/Qwen3.8-27B-GGUF/MTP/mtp-Q4_0.gguf"
+    )
 
 
 def test_parse_skips_model_with_unresolvable_projector_path(tmp_path: Path) -> None:
@@ -121,11 +185,61 @@ def test_parse_skips_model_with_unresolvable_projector_path(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    assert parse_model_sources(config_path) == []
+    assert model_sources(load_config(config_path)) == []
+
+
+@pytest.mark.parametrize(
+    "draft_argument", ["--spec-draft-model", "-md", "--model-draft"]
+)
+def test_parse_skips_model_with_draft_flag_missing_its_path(
+    tmp_path: Path, draft_argument: str
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n"
+        "  demo:\n"
+        "    cmd: llama-server -m /models/acme/demo-GGUF/demo.gguf "
+        f"{draft_argument}\n",
+        encoding="utf-8",
+    )
+
+    assert model_sources(load_config(config_path)) == []
 
 
 def test_parse_returns_empty_for_config_without_models(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yml"
     config_path.write_text("healthCheckTimeout: 300\n", encoding="utf-8")
 
-    assert parse_model_sources(config_path) == []
+    assert model_sources(load_config(config_path)) == []
+
+
+def test_model_paths_by_name_reports_a_path_no_source_could_be_derived_from(
+    tmp_path: Path,
+) -> None:
+    """swapboard cannot download it, but it must know the file is spoken for."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n  solo:\n    cmd: llama-server -m /srv/solo.gguf\n",
+        encoding="utf-8",
+    )
+    document = load_config(config_path)
+
+    assert model_sources(document) == []
+    assert model_paths_by_name(document) == {"solo": ["/srv/solo.gguf"]}
+
+
+def test_model_paths_by_name_includes_the_multimodal_projector(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        "models:\n"
+        "  vision:\n"
+        "    cmd: llama-server -m /models/acme/v-GGUF/v.gguf"
+        " --mmproj /models/acme/v-GGUF/proj.gguf\n",
+        encoding="utf-8",
+    )
+
+    assert model_paths_by_name(load_config(config_path)) == {
+        "vision": ["/models/acme/v-GGUF/v.gguf", "/models/acme/v-GGUF/proj.gguf"]
+    }

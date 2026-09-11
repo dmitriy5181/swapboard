@@ -70,11 +70,13 @@ models:
       --ubatch-size 512
       --gpu-layers auto
 
+# Matrix variable names are llama-swap identifiers, not model names: they are
+# limited to eight alphanumeric characters.
 matrix:
   vars:
-    embedding: embeddinggemma-300M
+    embed: embeddinggemma-300M
     qwen35: qwen3.5-4b-q4_k_m
-    gemma4e2b: gemma-4-E2B-it-Q4_0
+    gemma4e: gemma-4-E2B-it-Q4_0
     reranker: qwen3-reranker-0.6b-q8_0
   sets:
-    embedding_and_llm: "embedding & (qwen35 | gemma4e2b)"
+    embedding_and_llm: "embed & (qwen35 | gemma4e)"

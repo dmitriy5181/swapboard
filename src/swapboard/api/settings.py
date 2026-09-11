@@ -1,8 +1,10 @@
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from swapboard.common.network import DEFAULT_LLAMA_SWAP_PORT
+from swapboard.common.network import DEFAULT_HOST, DEFAULT_LLAMA_SWAP_PORT
 from swapboard.common.paths import Layout
+
+WILDCARD_HOSTS = frozenset({"", "0.0.0.0", "::", "[::]"})
 
 
 class Settings(BaseSettings):
@@ -23,10 +25,25 @@ class Settings(BaseSettings):
     llama_swap_config_path: str = Field(
         default_factory=lambda: str(Layout.default().llama_swap_config)
     )
+    llama_swap_host: str = DEFAULT_HOST
     llama_swap_port: int = DEFAULT_LLAMA_SWAP_PORT
     models_path: str = Field(default_factory=lambda: str(Layout.default().models))
     hf_token: str | None = None
     public_endpoint_url: str | None = None
+
+    @property
+    def llama_swap_url(self) -> str:
+        """Where the API itself reaches llama-swap.
+
+        The deployment may bind llama-swap to one particular interface, which
+        loopback would then miss entirely. A wildcard bind is not an address
+        to call back on, so it falls to loopback; `public_endpoint_url`
+        describes what clients see, not what we call.
+        """
+        host = self.llama_swap_host
+        if host in WILDCARD_HOSTS:
+            host = DEFAULT_HOST
+        return f"http://{host}:{self.llama_swap_port}"
 
     @field_validator("hf_token", "public_endpoint_url", mode="before")
     @classmethod

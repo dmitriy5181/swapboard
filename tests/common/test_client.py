@@ -14,6 +14,12 @@ MODEL_PAYLOAD = {
     "download_error": None,
 }
 
+STRAY_PAYLOAD = {
+    "relative_path": "acme/old-llama-GGUF",
+    "files": ["old-llama-Q4_K_M.gguf"],
+    "size_bytes": 4096,
+}
+
 
 def build_client(handler, base_url: str = "http://gateway.test") -> SwapboardClient:
     client = SwapboardClient(base_url)
@@ -98,12 +104,83 @@ def test_get_model_escapes_characters_that_would_truncate_the_path() -> None:
     assert seen == [b"/models/weird%3Fname%23frag"]
 
 
+def test_remove_model_deletes_the_named_path() -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        return httpx.Response(200, json={"removed": True, "message": "Model removed"})
+
+    result = build_client(handler).remove_model("llama-3")
+
+    assert seen == [("DELETE", "/models/llama-3")]
+    assert result.removed is True
+
+
+def test_remove_stray_deletes_under_the_stray_path() -> None:
+    seen: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path)
+        return httpx.Response(200, json={"removed": True, "message": "Removed"})
+
+    build_client(handler).remove_stray("acme/old-llama-GGUF")
+
+    assert seen == [b"/stray-models/acme/old-llama-GGUF"]
+
+
+def test_get_config_returns_text_and_warnings() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"text": "models: {}", "warnings": ["model 'x' is unmanageable"]}
+        )
+
+    document = build_client(handler).get_config()
+
+    assert document.text == "models: {}"
+    assert document.warnings == ["model 'x' is unmanageable"]
+
+
+def test_save_config_puts_the_submitted_text() -> None:
+    seen: list[tuple[str, str, bytes]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        return httpx.Response(200, json={"saved": True, "message": "Saved."})
+
+    result = build_client(handler).save_config("models: {}")
+
+    assert seen == [("PUT", "/config", b'{"text":"models: {}"}')]
+    assert result.saved is True
+
+
+def test_save_config_returns_the_reasons_a_rejection_carries() -> None:
+    """A refused config is an answer to show, not an exception to swallow."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={
+                "saved": False,
+                "message": "The configuration was not saved.",
+                "errors": ["models/x: 'cmd' is a required property"],
+            },
+        )
+
+    result = build_client(handler).save_config("models: {x: {}}")
+
+    assert result.saved is False
+    assert result.errors == ["models/x: 'cmd' is a required property"]
+
+
 def test_get_status_aggregates_every_endpoint() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/info":
             return httpx.Response(200, json={"port": 9000})
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/stray-models":
+            return httpx.Response(200, json=[STRAY_PAYLOAD])
         return httpx.Response(200, json=[MODEL_PAYLOAD])
 
     client = build_client(handler, "http://gateway.test:8400")
@@ -115,6 +192,7 @@ def test_get_status_aggregates_every_endpoint() -> None:
     assert status.info.port == 9000
     assert status.health == {"status": "ok"}
     assert len(status.models) == 1
+    assert [stray.relative_path for stray in status.stray] == ["acme/old-llama-GGUF"]
 
 
 @pytest.mark.parametrize(

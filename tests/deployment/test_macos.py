@@ -205,6 +205,15 @@ def test_hosts_are_configurable_for_remote_access(layout, config) -> None:
     assert llama_swap.program_arguments[-1] == "0.0.0.0:8772"
 
 
+def test_api_learns_where_llama_swap_listens(layout, config) -> None:
+    """Bound to one interface, llama-swap is not there to be found on loopback."""
+    deployment = build(layout, config, llama_swap_host="192.168.1.10")
+
+    agent = agent_by_label(deployment, API_LABEL)
+
+    assert agent.environment_variables["SWAPBOARD_LLAMA_SWAP_HOST"] == "192.168.1.10"
+
+
 def test_agent_writes_owner_only_plist(layout, config, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     agent = agent_by_label(

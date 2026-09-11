@@ -285,6 +285,7 @@ class MacOSDeployment(MacOSHost):
     def _api_agent(self) -> LaunchAgent:
         environment = {
             "SWAPBOARD_LLAMA_SWAP_CONFIG_PATH": str(self._layout.llama_swap_config),
+            "SWAPBOARD_LLAMA_SWAP_HOST": self._options.llama_swap_host,
             "SWAPBOARD_LLAMA_SWAP_PORT": str(self._options.llama_swap_port),
             "SWAPBOARD_MODELS_PATH": str(self._layout.models),
             "PATH": SERVICE_PATH,

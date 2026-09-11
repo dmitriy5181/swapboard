@@ -4,7 +4,11 @@ Model management API and dashboard for [llama-swap](https://github.com/mostlygee
 
 swapboard reads your llama-swap configuration, works out which Hugging Face
 repository each model comes from, reports whether its files are present on
-disk, and downloads the missing ones on request. It ships two parts:
+disk, and downloads the missing ones on request. It also reports what each
+model is — family, size, quantization, context length and capabilities, as
+llama-swap sees them — what it occupies on disk, and which GGUF files are
+left over from models the configuration no longer mentions. It ships two
+parts:
 
 - a **JSON API** (FastAPI) that other services can drive, and
 - a **web dashboard** (Flask + HTMX) for doing it by hand.
@@ -60,6 +64,23 @@ models:
 
 swapboard sets `MODELS_DIR` and `LLAMA_SERVER_BIN` when it launches llama-swap.
 See [`llama-swap.example.yml`](llama-swap.example.yml) for a fuller example.
+
+### Editing the configuration
+
+The dashboard edits `llama-swap.yml` in place. A save is validated against the
+JSON Schema published by the pinned llama-swap release before it is written, so
+a mistake is reported against the offending key rather than breaking a running
+server; the previous file is kept alongside as `llama-swap.yml.bak`, and
+llama-swap picks the change up through `--watch-config` without a restart.
+
+Because the schema tracks the llama-swap swapboard installs, a config using
+options from a *different* llama-swap may be refused. Editing the file directly
+bypasses the editor entirely.
+
+The `cmd` lines in that file are shell commands llama-swap executes. Anyone who
+can reach the API can therefore run code as the llama-swap user, which is the
+authority the file already grants — keep the API on loopback, or in front of
+something that authenticates.
 
 Configuration is read from `SWAPBOARD_*` environment variables, covering the
 config file to read, where models are stored, a Hugging Face token for private

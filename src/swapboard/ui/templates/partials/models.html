@@ -1,15 +1,13 @@
 {% set is_downloading = gateway.models | selectattr('download_state', 'equalto', 'downloading') | list | length > 0 %}
 <div id="models-section"
-     {% if is_downloading %}
      hx-get="{{ url_for('models_bp.partial_models') }}"
-     hx-trigger="every 3s"
      hx-swap="outerHTML"
-     {% endif %}>
+     hx-trigger="models-updated from:body{% if is_downloading %}, every 3s{% endif %}">
 
     {% if feedback %}
     <div class="alert alert-{{ feedback_category }} alert-dismissible fade show mb-3" role="alert">
         {{ feedback }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss"></button>
     </div>
     {% endif %}
 
@@ -18,16 +16,26 @@
             <span>
                 Inference Server
                 {% if gateway.status.value == 'ok' %}
-                <span class="badge text-bg-success ms-2">Online</span>
+                <span class="badge text-bg-success ms-2"><i class="bi bi-check-circle-fill me-1"></i>Online</span>
                 {% else %}
-                <span class="badge text-bg-danger ms-2">Unavailable</span>
+                <span class="badge text-bg-danger ms-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Unavailable</span>
                 {% endif %}
             </span>
-            <button type="button" class="btn btn-outline-secondary btn-sm"
-                    hx-get="{{ url_for('models_bp.partial_models') }}"
-                    hx-target="#models-section" hx-swap="outerHTML">
-                Refresh
-            </button>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary"
+                        title="Refresh" aria-label="Refresh"
+                        hx-get="{{ url_for('models_bp.partial_models') }}"
+                        hx-target="#models-section" hx-swap="outerHTML">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary"
+                        title="Edit llama-swap configuration" aria-label="Edit llama-swap configuration"
+                        data-bs-toggle="modal" data-bs-target="#config-modal"
+                        hx-get="{{ url_for('models_bp.partial_config_editor') }}"
+                        hx-target="#config-modal-dialog" hx-swap="innerHTML">
+                    <i class="bi bi-pencil-square"></i>
+                </button>
+            </div>
         </div>
         <div class="card-body">
             <p class="text-body-secondary small">
@@ -38,7 +46,7 @@
             {% if gateway.status.value == 'ok' and gateway.endpoint_url %}
             <div class="mb-3">
                 <label class="form-label small text-body-secondary mb-1" for="endpoint-url">
-                    OpenAI-compatible endpoint (use as the Base URL in your client)
+                    <i class="bi bi-link-45deg me-1"></i>OpenAI-compatible endpoint (use as the Base URL in your client)
                 </label>
                 <input type="text" class="form-control form-control-sm font-monospace"
                        value="{{ gateway.endpoint_url }}" readonly
@@ -57,7 +65,8 @@
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Repository</th>
+                            <th>Details</th>
+                            <th class="text-end">Size</th>
                             <th>Status</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -66,7 +75,12 @@
                         {% for model in gateway.models %}
                         <tr>
                             <td>{{ model.name }}</td>
-                            <td>{{ model.repo_id }}</td>
+                            <td>
+                                {% include "partials/model_badges.html" %}
+                            </td>
+                            <td class="text-end text-nowrap">
+                                {% if model.size_bytes %}{{ model.size_bytes | filesizeformat(true) }}{% else %}&mdash;{% endif %}
+                            </td>
                             <td>
                                 {% if model.download_state.value == 'downloading' %}
                                 <span class="badge text-bg-secondary">
@@ -81,19 +95,27 @@
                                 {% endif %}
                             </td>
                             <td class="text-end">
-                                {% if model.present or model.download_state.value == 'completed' %}
-                                <span class="text-body-secondary small">ready</span>
-                                {% elif model.download_state.value == 'downloading' %}
-                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
-                                    In progress
-                                </button>
-                                {% else %}
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        hx-post="{{ url_for('models_bp.download_model', name=model.name) }}"
-                                        hx-target="#models-section" hx-swap="outerHTML">
-                                    Download
-                                </button>
-                                {% endif %}
+                                {% set is_present = model.present or model.download_state.value == 'completed' %}
+                                {% set in_progress = model.download_state.value == 'downloading' %}
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            title="Download" aria-label="Download {{ model.name }}"
+                                            {% if is_present or in_progress %}disabled{% else %}
+                                            hx-post="{{ url_for('models_bp.download_model', name=model.name) }}"
+                                            hx-target="#models-section" hx-swap="outerHTML"
+                                            {% endif %}>
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger"
+                                            title="Remove downloaded files" aria-label="Remove {{ model.name }}"
+                                            {% if not is_present or in_progress %}disabled{% else %}
+                                            hx-delete="{{ url_for('models_bp.remove_model', name=model.name) }}"
+                                            hx-target="#models-section" hx-swap="outerHTML"
+                                            hx-confirm="Delete the downloaded files for {{ model.name }}?"
+                                            {% endif %}>
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -105,4 +127,51 @@
             {% endif %}
         </div>
     </div>
+
+    {% if gateway.stray %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-folder-x me-2"></i>Stray models
+        </div>
+        <div class="card-body">
+            <p class="text-body-secondary small">
+                These GGUF files are on disk but no longer referenced by the
+                llama-swap configuration. Removing them frees the space.
+            </p>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Location</th>
+                            <th class="text-end">Files</th>
+                            <th class="text-end">Size</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stray in gateway.stray %}
+                        <tr>
+                            <td class="font-monospace small">{{ stray.relative_path }}</td>
+                            <td class="text-end">{{ stray.files | length }}</td>
+                            <td class="text-end text-nowrap">{{ stray.size_bytes | filesizeformat(true) }}</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-outline-danger"
+                                            title="Remove from disk" aria-label="Remove {{ stray.relative_path }}"
+                                            hx-delete="{{ url_for('models_bp.remove_stray_model', relative_path=stray.relative_path) }}"
+                                            hx-target="#models-section" hx-swap="outerHTML"
+                                            hx-confirm="Delete {{ stray.relative_path }} from disk?">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
