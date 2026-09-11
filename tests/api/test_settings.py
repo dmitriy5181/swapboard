@@ -1,3 +1,5 @@
+import pytest
+
 from swapboard.api.settings import Settings
 from swapboard.common.network import DEFAULT_LLAMA_SWAP_PORT
 
@@ -77,3 +79,18 @@ def test_settings_accepts_keyword_arguments() -> None:
     )
 
     assert settings.llama_swap_port == 1234
+
+
+def test_llama_swap_url_follows_the_configured_host() -> None:
+    """A llama-swap bound to one interface is not reachable on loopback."""
+    settings = Settings(llama_swap_host="192.168.1.10", llama_swap_port=8772)
+
+    assert settings.llama_swap_url == "http://192.168.1.10:8772"
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", ""])
+def test_llama_swap_url_calls_loopback_for_a_wildcard_bind(host: str) -> None:
+    """A wildcard is what to listen on, not an address to call back on."""
+    settings = Settings(llama_swap_host=host, llama_swap_port=8772)
+
+    assert settings.llama_swap_url == "http://127.0.0.1:8772"

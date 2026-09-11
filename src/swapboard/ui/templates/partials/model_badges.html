@@ -3,10 +3,10 @@
 <div class="d-flex flex-wrap gap-1">
     {% if model.meta %}
     {% set meta = model.meta %}
-    {% set loaded = state_badge(meta.state) %}
-    {% if loaded %}
-    <span class="badge text-bg-success" title="Held in memory by llama-swap">
-        <i class="bi {{ loaded.icon }} me-1"></i>{{ loaded.label }}
+    {% set live_state = state_badge(meta.state) %}
+    {% if live_state %}
+    <span class="badge text-bg-{{ live_state.style }}" title="{{ live_state.title }}">
+        <i class="bi {{ live_state.icon }} me-1"></i>{{ live_state.label }}
     </span>
     {% endif %}
     {% if meta.family %}

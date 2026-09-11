@@ -3,7 +3,7 @@ import threading
 
 from huggingface_hub import hf_hub_download
 
-from swapboard.api.config import parse_model_sources
+from swapboard.api.config import load_config, model_paths_by_name, model_sources
 from swapboard.api.llamaswap import LlamaSwapCatalog
 from swapboard.api.settings import Settings
 from swapboard.api.store import ModelStore
@@ -40,11 +40,13 @@ class Downloads:
         with self._lock:
             self._by_model.pop(name, None)
 
-    def try_begin(self, name: str) -> bool:
+    def try_claim(self, name: str) -> bool:
         """Claims the download slot for a model, or reports it already taken.
 
         Checking and claiming under one lock is what stops two concurrent
-        requests from both starting a download of the same model.
+        requests from both starting a download of the same model. A removal
+        claims the same slot, so a download cannot begin writing the files it
+        is in the middle of deleting.
         """
         with self._lock:
             current = self._by_model.get(name, DownloadProgress())
@@ -77,7 +79,7 @@ class ModelsService:
         return self._status_for(source, self._catalog.fetch_meta().get(name))
 
     def list_stray(self) -> list[StrayModel]:
-        return self._store.stray(self._sources())
+        return self._store.stray(self._claims())
 
     def start_download(self, name: str) -> DownloadOutcome:
         source = self._source(name)
@@ -89,7 +91,7 @@ class ModelsService:
             return DownloadOutcome(
                 found=True, started=False, message="Model already present"
             )
-        if not self._downloads.try_begin(name):
+        if not self._downloads.try_claim(name):
             return DownloadOutcome(
                 found=True, started=False, message="Download already in progress"
             )
@@ -105,24 +107,31 @@ class ModelsService:
 
         The model stays listed and downloadable; forgetting it entirely is an
         edit to the llama-swap config, not a removal.
+
+        Removal claims the download slot for as long as it runs, because
+        merely checking for a download in flight would leave a request that
+        starts one an instant later writing the files back.
         """
         source = self._source(name)
         if source is None:
             return RemovalOutcome(
                 found=False, removed=False, message=f"Unknown model '{name}'"
             )
-        if self._downloads.get(name).state == DownloadState.DOWNLOADING:
+        if not self._downloads.try_claim(name):
             return RemovalOutcome(
                 found=True, removed=False, message="Download in progress"
             )
 
-        removed = self._store.remove(source)
-        self._downloads.clear(name)
-        message = "Model removed" if removed else "Model was not downloaded"
-        return RemovalOutcome(found=True, removed=removed, message=message)
+        try:
+            removed = self._store.remove(source, self._claims(excluding=name))
+        finally:
+            self._downloads.clear(name)
+        return RemovalOutcome(
+            found=True, removed=removed, message=self._removal_message(source, removed)
+        )
 
     def remove_stray(self, relative_path: str) -> RemovalOutcome:
-        if not self._store.remove_path(relative_path):
+        if not self._store.remove_stray(relative_path, self._claims()):
             return RemovalOutcome(
                 found=False,
                 removed=False,
@@ -130,9 +139,48 @@ class ModelsService:
             )
         return RemovalOutcome(found=True, removed=True, message="Stray model removed")
 
+    def _removal_message(self, source: ModelSource, removed: bool) -> str:
+        """Tells apart a model that was never here from one that had to stay.
+
+        Files left behind because another configured model runs on them would
+        otherwise be reported as never downloaded, while the table goes on
+        showing the model as available.
+        """
+        if removed:
+            return "Model removed"
+        if self._store.is_present(source):
+            return "Files kept: another configured model uses them"
+        return "Model was not downloaded"
+
     def _sources(self) -> list[ModelSource]:
         """Re-reads the config on every call so edits are picked up live."""
-        return parse_model_sources(self._settings.llama_swap_config_path)
+        return model_sources(self._document())
+
+    def _claims(self, *, excluding: str | None = None) -> list[str]:
+        """Every file the configuration still speaks for.
+
+        The paths a command line names and the paths swapboard derives from
+        them can disagree -- a model outside the `<org>/<repo>/<file>` layout
+        yields a derived path that exists nowhere -- so both are claimed.
+        Nothing here may be deleted as stray or as another model's leftovers.
+        """
+        document = self._document()
+        configured = [
+            path
+            for name, paths in model_paths_by_name(document).items()
+            if name != excluding
+            for path in paths
+        ]
+        derived = [
+            model_file.relative_path
+            for source in model_sources(document)
+            if source.name != excluding
+            for model_file in source.files
+        ]
+        return configured + derived
+
+    def _document(self) -> object:
+        return load_config(self._settings.llama_swap_config_path)
 
     def _source(self, name: str) -> ModelSource | None:
         return next((source for source in self._sources() if source.name == name), None)

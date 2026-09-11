@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from swapboard.api.store import ModelStore, OutsideStoreError
+from swapboard.api.store import ModelStore
 from swapboard.common.models import ModelFile, ModelSource
 
 
@@ -47,7 +47,7 @@ def test_remove_deletes_the_files_and_the_emptied_directory(tmp_path: Path) -> N
     gguf(tmp_path, "acme/demo-GGUF/mmproj.gguf")
 
     removed = ModelStore(tmp_path).remove(
-        source("acme/demo-GGUF/demo.gguf", "acme/demo-GGUF/mmproj.gguf")
+        source("acme/demo-GGUF/demo.gguf", "acme/demo-GGUF/mmproj.gguf"), []
     )
 
     assert removed is True
@@ -61,7 +61,7 @@ def test_remove_clears_the_download_cache_left_beside_the_files(tmp_path: Path) 
     cache.parent.mkdir(parents=True)
     cache.write_text("meta", encoding="utf-8")
 
-    ModelStore(tmp_path).remove(source("acme/demo-GGUF/demo.gguf"))
+    ModelStore(tmp_path).remove(source("acme/demo-GGUF/demo.gguf"), [])
 
     assert not (tmp_path / "acme/demo-GGUF").exists()
 
@@ -70,21 +70,21 @@ def test_remove_keeps_a_directory_another_model_still_uses(tmp_path: Path) -> No
     gguf(tmp_path, "acme/demo-GGUF/small.gguf")
     gguf(tmp_path, "acme/demo-GGUF/large.gguf")
 
-    ModelStore(tmp_path).remove(source("acme/demo-GGUF/small.gguf"))
+    ModelStore(tmp_path).remove(source("acme/demo-GGUF/small.gguf"), [])
 
     assert not (tmp_path / "acme/demo-GGUF/small.gguf").exists()
     assert (tmp_path / "acme/demo-GGUF/large.gguf").exists()
 
 
 def test_remove_reports_nothing_removed_when_absent(tmp_path: Path) -> None:
-    assert ModelStore(tmp_path).remove(source("acme/demo-GGUF/demo.gguf")) is False
+    assert ModelStore(tmp_path).remove(source("acme/demo-GGUF/demo.gguf"), []) is False
 
 
 def test_stray_lists_files_no_configured_model_claims(tmp_path: Path) -> None:
     gguf(tmp_path, "acme/keep-GGUF/keep.gguf")
     gguf(tmp_path, "acme/gone-GGUF/gone.gguf", size=16)
 
-    stray = ModelStore(tmp_path).stray([source("acme/keep-GGUF/keep.gguf")])
+    stray = ModelStore(tmp_path).stray(["acme/keep-GGUF/keep.gguf"])
 
     assert len(stray) == 1
     assert stray[0].relative_path == "acme/gone-GGUF"
@@ -133,34 +133,79 @@ def test_stray_of_a_missing_models_directory_is_empty(tmp_path: Path) -> None:
     assert ModelStore(tmp_path / "absent").stray([]) == []
 
 
-def test_remove_path_deletes_a_whole_stray_directory(tmp_path: Path) -> None:
+def test_stray_leaves_a_model_whose_path_only_the_config_spells(
+    tmp_path: Path,
+) -> None:
+    """A file swapboard cannot download is still a file llama-swap is running."""
+    gguf(tmp_path, "solo.gguf")
+
+    assert ModelStore(tmp_path).stray([str(tmp_path / "solo.gguf")]) == []
+
+
+def test_remove_stray_deletes_a_whole_stray_directory(tmp_path: Path) -> None:
     gguf(tmp_path, "acme/gone-GGUF/gone.gguf")
 
-    assert ModelStore(tmp_path).remove_path("acme/gone-GGUF") is True
+    assert ModelStore(tmp_path).remove_stray("acme/gone-GGUF", []) is True
     assert not (tmp_path / "acme/gone-GGUF").exists()
 
 
-def test_remove_path_reports_an_unknown_target(tmp_path: Path) -> None:
-    assert ModelStore(tmp_path).remove_path("acme/absent") is False
+def test_remove_stray_spares_a_configured_file_beside_it(tmp_path: Path) -> None:
+    """The entry names the directory, but only the unclaimed file is stray."""
+    gguf(tmp_path, "acme/demo-GGUF/keep.gguf")
+    gguf(tmp_path, "acme/demo-GGUF/gone.gguf")
+
+    removed = ModelStore(tmp_path).remove_stray(
+        "acme/demo-GGUF", ["acme/demo-GGUF/keep.gguf"]
+    )
+
+    assert removed is True
+    assert (tmp_path / "acme/demo-GGUF/keep.gguf").exists()
+    assert not (tmp_path / "acme/demo-GGUF/gone.gguf").exists()
+
+
+def test_remove_stray_refuses_a_path_holding_only_configured_files(
+    tmp_path: Path,
+) -> None:
+    """Nothing there was ever reported as stray, so nothing there may go."""
+    gguf(tmp_path, "acme/demo-GGUF/demo.gguf")
+
+    removed = ModelStore(tmp_path).remove_stray(
+        "acme/demo-GGUF", ["acme/demo-GGUF/demo.gguf"]
+    )
+
+    assert removed is False
+    assert (tmp_path / "acme/demo-GGUF/demo.gguf").exists()
+
+
+def test_remove_stray_reports_an_unknown_target(tmp_path: Path) -> None:
+    assert ModelStore(tmp_path).remove_stray("acme/absent", []) is False
 
 
 @pytest.mark.parametrize("relative_path", ["../outside", "acme/../../outside", "/etc"])
-def test_remove_path_refuses_to_leave_the_models_directory(
+def test_remove_stray_removes_nothing_outside_the_models_directory(
     tmp_path: Path, relative_path: str
 ) -> None:
     outside = tmp_path.parent / "outside"
     outside.mkdir(exist_ok=True)
 
-    with pytest.raises(OutsideStoreError):
-        ModelStore(tmp_path).remove_path(relative_path)
-
+    assert ModelStore(tmp_path).remove_stray(relative_path, []) is False
     assert outside.exists()
 
 
-def test_remove_path_refuses_to_delete_the_store_itself(tmp_path: Path) -> None:
+def test_remove_stray_refuses_to_delete_the_store_itself(tmp_path: Path) -> None:
     gguf(tmp_path, "acme/demo-GGUF/demo.gguf")
 
-    with pytest.raises(OutsideStoreError):
-        ModelStore(tmp_path).remove_path(".")
-
+    assert ModelStore(tmp_path).remove_stray(".", []) is False
     assert (tmp_path / "acme/demo-GGUF/demo.gguf").exists()
+
+
+def test_remove_spares_a_file_another_model_still_claims(tmp_path: Path) -> None:
+    """Two entries can serve the same weights with different settings."""
+    gguf(tmp_path, "acme/demo-GGUF/shared.gguf")
+
+    removed = ModelStore(tmp_path).remove(
+        source("acme/demo-GGUF/shared.gguf"), ["acme/demo-GGUF/shared.gguf"]
+    )
+
+    assert removed is False
+    assert (tmp_path / "acme/demo-GGUF/shared.gguf").exists()

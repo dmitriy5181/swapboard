@@ -474,3 +474,41 @@ def test_config_editor_is_the_modal_content_itself(stub) -> None:
     response = build_client(stub).get("/partials/config-editor")
 
     assert response.data.lstrip().startswith(b'<form class="modal-content')
+
+
+def test_api_failure_with_a_non_object_body_still_reports_the_refusal(stub) -> None:
+    """`.get` on a JSON array would raise a second failure inside the first."""
+    request = httpx.Request("DELETE", "http://api.test/models/demo")
+    response = httpx.Response(502, json=["gateway", "error"], request=request)
+    stub.error = httpx.HTTPStatusError("502", request=request, response=response)
+
+    page = build_client(stub).delete("/models/demo")
+
+    assert b"The swapboard API refused to remove &#39;demo&#39;." in page.data
+
+
+def test_model_in_error_is_not_painted_as_held_in_memory(stub) -> None:
+    """A failed load styled as success would read as a healthy model."""
+    stub = StubClient(online(model(meta=ModelMeta(state="error"))))
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"text-bg-danger" in response.data
+    assert b"Held in memory" not in response.data
+
+
+def test_model_still_loading_is_marked_as_in_flight(stub) -> None:
+    stub = StubClient(online(model(meta=ModelMeta(state="starting"))))
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"text-bg-warning" in response.data
+    assert b"llama-swap reports this model as starting" in response.data
+
+
+def test_config_modal_is_named_for_a_screen_reader(stub) -> None:
+    page = build_client(stub).get("/")
+    editor = build_client(stub).get("/partials/config-editor")
+
+    assert b'aria-labelledby="config-modal-title"' in page.data
+    assert b'id="config-modal-title"' in editor.data

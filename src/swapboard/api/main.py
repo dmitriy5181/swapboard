@@ -72,7 +72,7 @@ def list_stray_models() -> list[StrayModel]:
 
 @app.delete("/stray-models/{relative_path:path}", response_model=RemovalResponse)
 def remove_stray_model(relative_path: str) -> RemovalResponse:
-    outcome = _guarded(lambda: service.remove_stray(relative_path))
+    outcome = service.remove_stray(relative_path)
     if not outcome.found:
         raise HTTPException(status_code=404, detail=outcome.message)
     return RemovalResponse(removed=outcome.removed, message=outcome.message)

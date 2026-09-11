@@ -112,3 +112,10 @@ def test_fetch_meta_returns_nothing_on_an_error_status() -> None:
 
 def test_fetch_meta_returns_nothing_for_an_unexpected_payload() -> None:
     assert catalog_returning({"models": []}).fetch_meta() == {}
+
+
+def test_fetch_meta_skips_an_entry_whose_id_is_not_a_name() -> None:
+    """An unhashable id would otherwise raise past the fallback and break /models."""
+    catalog = catalog_returning({"data": [{"id": []}, {"id": ""}, CHAT_ENTRY]})
+
+    assert list(catalog.fetch_meta()) == ["gemma-4-e4b"]

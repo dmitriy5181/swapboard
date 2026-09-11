@@ -161,11 +161,11 @@ def test_get_unknown_model_returns_404(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
-def test_downloads_try_begin_allows_only_one_winner() -> None:
+def test_downloads_try_claim_allows_only_one_winner() -> None:
     downloads = Downloads()
 
-    assert downloads.try_begin("model") is True
-    assert downloads.try_begin("model") is False
+    assert downloads.try_claim("model") is True
+    assert downloads.try_claim("model") is False
 
 
 def test_download_unknown_model_returns_404(tmp_path: Path) -> None:
@@ -462,14 +462,18 @@ def test_remove_unknown_stray_model_is_not_found(tmp_path: Path) -> None:
 def test_remove_stray_model_refuses_to_escape_the_models_directory(
     tmp_path: Path,
 ) -> None:
-    """An encoded `..` survives URL normalisation and reaches the handler intact."""
+    """An encoded `..` survives URL normalisation and reaches the handler intact.
+
+    It names no file this store would report as stray, which is the whole of
+    the answer: the target is unknown rather than forbidden.
+    """
     outside = tmp_path.parent / "outside-the-store"
     outside.mkdir(exist_ok=True)
     client = build_client(tmp_path)
 
     response = client.delete("/stray-models/%2e%2e/outside-the-store")
 
-    assert response.status_code == 400
+    assert response.status_code == 404
     assert outside.exists()
 
 
@@ -515,3 +519,92 @@ def test_saved_config_is_served_to_the_models_endpoint(tmp_path: Path) -> None:
     names = [model["name"] for model in client.get("/models").json()]
 
     assert names == ["renamed-model"]
+
+
+SHARED_WEIGHTS_CONFIG = """\
+models:
+  fast:
+    cmd: llama-server -m /models/acme/demo-GGUF/demo.gguf -c 4096
+  long:
+    cmd: llama-server -m /models/acme/demo-GGUF/demo.gguf -c 32768
+"""
+
+UNDERIVABLE_CONFIG = """\
+models:
+  solo:
+    cmd: llama-server -m {path}
+"""
+
+
+def write_config(directory: Path, text: str) -> Path:
+    config = directory / "config.yml"
+    config.write_text(text, encoding="utf-8")
+    return config
+
+
+def test_removing_one_model_keeps_weights_a_second_model_shares(
+    tmp_path: Path,
+) -> None:
+    """Both entries run the same file; deleting it would take the other down."""
+    weights = tmp_path / "acme/demo-GGUF/demo.gguf"
+    weights.parent.mkdir(parents=True)
+    weights.write_bytes(b"x" * 32)
+    client = build_client(
+        tmp_path, config=write_config(tmp_path, SHARED_WEIGHTS_CONFIG)
+    )
+
+    response = client.delete("/models/fast")
+
+    assert response.json() == {
+        "removed": False,
+        "message": "Files kept: another configured model uses them",
+    }
+    assert weights.exists()
+
+
+def test_stray_removal_spares_a_configured_file_in_the_same_directory(
+    tmp_path: Path,
+) -> None:
+    """The stray entry names the directory; only the unclaimed file is stray."""
+    configured = (
+        tmp_path / "ggml-org/embeddinggemma-300M-GGUF/embeddinggemma-300M-Q8_0.gguf"
+    )
+    configured.parent.mkdir(parents=True)
+    configured.write_bytes(b"x" * 16)
+    extra = configured.parent / "extra.gguf"
+    extra.write_bytes(b"y" * 16)
+    client = build_client(tmp_path)
+
+    response = client.delete("/stray-models/ggml-org/embeddinggemma-300M-GGUF")
+
+    assert response.json() == {"removed": True, "message": "Stray model removed"}
+    assert configured.exists()
+    assert not extra.exists()
+
+
+def test_a_model_only_the_config_can_name_is_never_listed_as_stray(
+    tmp_path: Path,
+) -> None:
+    """swapboard cannot download it, so it must not offer to delete it either."""
+    weights = tmp_path / "solo.gguf"
+    weights.write_bytes(b"x" * 16)
+    config = write_config(tmp_path, UNDERIVABLE_CONFIG.format(path=weights))
+    client = build_client(tmp_path, config=config)
+
+    assert client.get("/stray-models").json() == []
+    assert client.delete("/stray-models/solo.gguf").status_code == 404
+    assert weights.exists()
+
+
+def test_removal_releases_the_claim_it_took_for_a_later_download(
+    tmp_path: Path,
+) -> None:
+    """Holding the slot past the delete would lock the model out of downloading."""
+    client = build_client(tmp_path)
+
+    client.delete("/models/embeddinggemma-300M")
+
+    with patch("swapboard.api.service.hf_hub_download"):
+        response = client.post("/models/embeddinggemma-300M/download")
+
+    assert response.json()["started"] is True

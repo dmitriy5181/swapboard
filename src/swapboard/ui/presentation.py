@@ -5,12 +5,24 @@ from dataclasses import dataclass
 from swapboard.common.models import ModelParameters
 
 UNLOADED_STATE = "unloaded"
+LOADED_STATES = frozenset({"ready", "loaded"})
+FAILED_STATES = frozenset({"error", "failed"})
 
 
 @dataclass(frozen=True)
 class Badge:
     icon: str
     label: str
+
+
+@dataclass(frozen=True)
+class StateBadge:
+    """What llama-swap is doing with a model, and how loudly to say so."""
+
+    icon: str
+    label: str
+    style: str
+    title: str
 
 
 CAPABILITY_BADGES = {
@@ -27,16 +39,36 @@ TASK_BADGES = {
 }
 
 
-def state_badge(state: str | None) -> Badge | None:
-    """Marks a model llama-swap currently holds in memory.
+def state_badge(state: str | None) -> StateBadge | None:
+    """Says what llama-swap is doing with a model right now.
 
-    Anything other than `unloaded` counts, because llama-swap distinguishes
-    loading from ready and may add further live states; showing the state's own
-    name keeps the badge truthful without enumerating them.
+    Anything other than `unloaded` is worth showing, and showing the state's
+    own name keeps the badge truthful as llama-swap adds further ones. Only a
+    loaded model is good news, though: a state still in flight, or one that
+    failed outright, must not be painted as a model sitting ready in memory.
     """
     if not state or state == UNLOADED_STATE:
         return None
-    return Badge("bi-lightning-charge-fill", state.capitalize())
+    if state in LOADED_STATES:
+        return StateBadge(
+            "bi-lightning-charge-fill",
+            state.capitalize(),
+            "success",
+            "Held in memory by llama-swap",
+        )
+    if state in FAILED_STATES:
+        return StateBadge(
+            "bi-exclamation-octagon-fill",
+            state.capitalize(),
+            "danger",
+            "llama-swap could not load this model",
+        )
+    return StateBadge(
+        "bi-hourglass-split",
+        state.capitalize(),
+        "warning",
+        f"llama-swap reports this model as {state}",
+    )
 
 
 def capability_badge(name: str) -> Badge:

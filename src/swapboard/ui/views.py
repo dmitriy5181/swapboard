@@ -113,10 +113,17 @@ def _reason(exc: Exception, action: str) -> str:
 
 
 def _detail(response: httpx.Response) -> str | None:
+    """Reads the API's own explanation, if the body carries one.
+
+    Anything else on the wire -- a proxy's error page, a bare JSON array -- is
+    no explanation, and must not become a second failure inside the handler
+    for the first.
+    """
     try:
-        detail = response.json().get("detail")
+        payload = response.json()
     except ValueError:
         return None
+    detail = payload.get("detail") if isinstance(payload, dict) else None
     return detail if isinstance(detail, str) else None
 
 

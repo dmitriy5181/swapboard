@@ -9,9 +9,9 @@ import yaml
 from swapboard.common.models import ModelFile, ModelSource
 
 
-def parse_model_sources(config_path: str | os.PathLike[str]) -> list[ModelSource]:
+def load_config(config_path: str | os.PathLike[str]) -> object:
     with open(config_path, encoding="utf-8") as handle:
-        return model_sources(yaml.safe_load(handle))
+        return yaml.safe_load(handle)
 
 
 def model_sources(config: object) -> list[ModelSource]:
@@ -29,6 +29,25 @@ def model_sources(config: object) -> list[ModelSource]:
         if source is not None:
             sources.append(source)
     return sources
+
+
+def model_paths_by_name(config: object) -> dict[str, list[str]]:
+    """Maps each configured model to the files its command line points at.
+
+    Unlike `model_sources`, a path that cannot be traced back to Hugging Face
+    is still reported: swapboard cannot download that file, but it must know
+    the file is spoken for before offering to delete it.
+    """
+    if not isinstance(config, dict):
+        return {}
+
+    paths_by_name: dict[str, list[str]] = {}
+    for name, definition in (config.get("models") or {}).items():
+        cmd = definition.get("cmd") if isinstance(definition, dict) else None
+        model_paths = _extract_model_paths(cmd) if isinstance(cmd, str) else None
+        if model_paths:
+            paths_by_name[name] = list(model_paths)
+    return paths_by_name
 
 
 def _parse_model_source(name: str, definition: dict[str, object]) -> ModelSource | None:

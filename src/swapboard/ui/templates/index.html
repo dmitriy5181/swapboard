@@ -9,7 +9,8 @@
    the document mid-edit. The editor form carries `modal-content` itself so the
    header, body and footer stay direct children of the flex container Bootstrap
    sizes; wrapping them in a form instead collapses the footer onto the border. #}
-<div class="modal fade" id="config-modal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="config-modal" tabindex="-1"
+     aria-labelledby="config-modal-title" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable" id="config-modal-dialog"></div>
 </div>
 {% endblock %}

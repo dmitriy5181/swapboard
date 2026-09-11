@@ -41,7 +41,7 @@ def _index(entries: object) -> dict[str, ModelMeta]:
     return {
         entry["id"]: _to_meta(entry)
         for entry in entries
-        if isinstance(entry, dict) and "id" in entry and not _is_peer(entry)
+        if isinstance(entry, dict) and _text(entry.get("id")) and not _is_peer(entry)
     }
 
 

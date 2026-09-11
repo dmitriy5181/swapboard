@@ -5,7 +5,7 @@
       hx-put="{{ url_for('models_bp.save_config') }}"
       hx-target="#config-modal-dialog" hx-swap="innerHTML">
     <div class="modal-header">
-        <h5 class="modal-title">
+        <h5 class="modal-title" id="config-modal-title">
             <i class="bi bi-pencil-square me-2"></i>llama-swap configuration
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
