@@ -1,0 +1,43 @@
+{# Everything known about one model except its files: metadata is absent
+   whenever llama-swap is unreachable, so only the repository is guaranteed. #}
+<div class="d-flex flex-wrap gap-1">
+    {% if model.meta %}
+    {% set meta = model.meta %}
+    {% set loaded = state_badge(meta.state) %}
+    {% if loaded %}
+    <span class="badge text-bg-success" title="Held in memory by llama-swap">
+        <i class="bi {{ loaded.icon }} me-1"></i>{{ loaded.label }}
+    </span>
+    {% endif %}
+    {% if meta.family %}
+    <span class="badge text-bg-primary">{{ meta.family }}</span>
+    {% endif %}
+    {% set parameters = format_parameters(meta.parameters) %}
+    {% if parameters %}
+    <span class="badge text-bg-secondary" title="Parameters">{{ parameters }}</span>
+    {% endif %}
+    {% if meta.quantization %}
+    <span class="badge text-bg-secondary" title="Quantization">{{ meta.quantization }}</span>
+    {% endif %}
+    {% set context = format_context(meta.context_length) %}
+    {% if context %}
+    <span class="badge text-bg-secondary" title="Context length">{{ context }}</span>
+    {% endif %}
+    {% if meta.task %}
+    {% set task = task_badge(meta.task) %}
+    <span class="badge text-bg-info" title="{{ task.label }}">
+        <i class="bi {{ task.icon }} me-1"></i>{{ task.label }}
+    </span>
+    {% endif %}
+    {% for capability in meta.capabilities %}
+    {% set badge = capability_badge(capability) %}
+    <span class="badge text-bg-light border" title="{{ badge.label }}">
+        <i class="bi {{ badge.icon }}"></i>
+        <span class="visually-hidden">{{ badge.label }}</span>
+    </span>
+    {% endfor %}
+    {% endif %}
+    <span class="badge text-bg-light border font-monospace" title="Hugging Face repository">
+        {{ model.repo_id }}
+    </span>
+</div>

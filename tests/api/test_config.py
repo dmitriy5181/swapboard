@@ -57,6 +57,33 @@ def test_parse_skips_models_without_resolvable_path(tmp_path: Path) -> None:
     assert {source.name for source in sources} == {"valid"}
 
 
+def test_parse_skips_paths_whose_repository_would_be_the_root(tmp_path: Path) -> None:
+    """`/opt/x.gguf` has three parts, the first being `/`, and must not resolve.
+
+    Accepting it would name the repository `/` and produce an absolute relative
+    path, placing the model outside the models directory.
+    """
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        'models:\n  "rooted":\n    cmd: llama-server -m /opt/demo.gguf\n',
+        encoding="utf-8",
+    )
+
+    assert parse_model_sources(config_path) == []
+
+
+def test_parse_skips_paths_that_climb_out_of_the_models_directory(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        'models:\n  "climber":\n    cmd: llama-server -m ../../etc/demo.gguf\n',
+        encoding="utf-8",
+    )
+
+    assert parse_model_sources(config_path) == []
+
+
 def test_parse_resolves_macro_prefixed_paths(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yml"
     config_path.write_text(

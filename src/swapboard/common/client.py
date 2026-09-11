@@ -6,16 +6,21 @@ from urllib.parse import quote
 import httpx
 
 from swapboard.common.models import (
+    ConfigDocument,
+    ConfigSaveResponse,
     DownloadResponse,
     GatewayStatus,
     InferenceInfo,
     ModelStatus,
+    RemovalResponse,
     ServiceStatus,
+    StrayModel,
 )
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0
+UNPROCESSABLE = 422
 
 
 class SwapboardClient:
@@ -51,6 +56,38 @@ class SwapboardClient:
         response.raise_for_status()
         return DownloadResponse.model_validate(response.json())
 
+    def remove_model(self, name: str) -> RemovalResponse:
+        response = self._client.delete(_model_path(name))
+        response.raise_for_status()
+        return RemovalResponse.model_validate(response.json())
+
+    def list_stray(self) -> list[StrayModel]:
+        response = self._client.get("/stray-models")
+        response.raise_for_status()
+        return [StrayModel.model_validate(item) for item in response.json()]
+
+    def remove_stray(self, relative_path: str) -> RemovalResponse:
+        response = self._client.delete(_stray_path(relative_path))
+        response.raise_for_status()
+        return RemovalResponse.model_validate(response.json())
+
+    def get_config(self) -> ConfigDocument:
+        response = self._client.get("/config")
+        response.raise_for_status()
+        return ConfigDocument.model_validate(response.json())
+
+    def save_config(self, text: str) -> ConfigSaveResponse:
+        """Saves the config, returning a rejection rather than raising on one.
+
+        A refused configuration is the expected answer to a typo, and the body
+        carries the reasons the editor has to show, so 422 is read rather than
+        turned into an exception.
+        """
+        response = self._client.put("/config", json={"text": text})
+        if response.status_code != UNPROCESSABLE:
+            response.raise_for_status()
+        return ConfigSaveResponse.model_validate(response.json())
+
     def get_status(self) -> GatewayStatus:
         """Collects the full dashboard view, reporting unavailable on failure.
 
@@ -65,6 +102,7 @@ class SwapboardClient:
                 endpoint_url=info.endpoint_url or self._endpoint_url(info.port),
                 health=self.get_health(),
                 models=self.list_models(),
+                stray=self.list_stray(),
             )
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("swapboard API unavailable: %s", exc)
@@ -90,3 +128,7 @@ def _model_path(name: str) -> str:
     '#' cannot silently truncate the request.
     """
     return f"/models/{quote(name, safe='/')}"
+
+
+def _stray_path(relative_path: str) -> str:
+    return f"/stray-models/{quote(relative_path, safe='/')}"

@@ -3,10 +3,19 @@
 Every artifact is a released tarball with a recorded digest, so an installation
 is reproducible and can be verified before anything is extracted. Bumping a
 runtime means changing the version, URL and digest here and nowhere else.
+
+The llama-swap config schema is pinned the same way, because it describes the
+configuration that one specific llama-swap release accepts: upstream `main`
+already declares options v250 rejects. Bumping `LLAMA_SWAP_VERSION` therefore
+means re-fetching `LLAMA_SWAP_CONFIG_SCHEMA.url`, replacing the vendored file
+and updating its digest; `test_manifest.py` fails until those agree.
 """
 
+import json
 import platform
 from dataclasses import dataclass
+from functools import cache
+from importlib.resources import files
 
 from swapboard.common.paths import LLAMA_CPP_RUNTIME, LLAMA_SWAP_RUNTIME
 
@@ -15,6 +24,7 @@ LLAMA_SWAP_VERSION = "250"
 
 LLAMA_CPP_RELEASES = "https://github.com/ggml-org/llama.cpp/releases/download"
 LLAMA_SWAP_RELEASES = "https://github.com/mostlygeek/llama-swap/releases/download"
+LLAMA_SWAP_SOURCE = "https://raw.githubusercontent.com/mostlygeek/llama-swap"
 
 
 class UnsupportedPlatformError(RuntimeError):
@@ -35,6 +45,35 @@ class RuntimeArtifact:
     @property
     def filename(self) -> str:
         return self.url.rsplit("/", 1)[-1]
+
+
+@dataclass(frozen=True)
+class ConfigSchemaArtifact:
+    """The JSON Schema one llama-swap release publishes for its config."""
+
+    version: str
+    url: str
+    sha256: str
+    resource: str
+
+
+LLAMA_SWAP_CONFIG_SCHEMA = ConfigSchemaArtifact(
+    version=LLAMA_SWAP_VERSION,
+    url=f"{LLAMA_SWAP_SOURCE}/v{LLAMA_SWAP_VERSION}/config-schema.json",
+    sha256="85c0101dbc8a4461bd4c751bc98b3441651a83a8ba855d0473ef6c8f4c2c5666",
+    resource="llama_swap_config_schema.json",
+)
+
+
+@cache
+def load_config_schema() -> dict:
+    """Reads the vendored schema, shipped rather than fetched.
+
+    Validation has to work offline, and on hosts that run their own llama-swap
+    and so never install a managed runtime to download it alongside.
+    """
+    resource = files(__package__).joinpath(LLAMA_SWAP_CONFIG_SCHEMA.resource)
+    return json.loads(resource.read_text(encoding="utf-8"))
 
 
 ARTIFACTS: dict[tuple[str, str, str], RuntimeArtifact] = {

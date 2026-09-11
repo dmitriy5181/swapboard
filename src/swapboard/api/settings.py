@@ -1,7 +1,7 @@
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from swapboard.common.network import DEFAULT_LLAMA_SWAP_PORT
+from swapboard.common.network import DEFAULT_HOST, DEFAULT_LLAMA_SWAP_PORT
 from swapboard.common.paths import Layout
 
 
@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     models_path: str = Field(default_factory=lambda: str(Layout.default().models))
     hf_token: str | None = None
     public_endpoint_url: str | None = None
+
+    @property
+    def llama_swap_url(self) -> str:
+        """Where the API itself reaches llama-swap.
+
+        Always the loopback address: the two run side by side on one host, and
+        `public_endpoint_url` describes what clients see, not what we call.
+        """
+        return f"http://{DEFAULT_HOST}:{self.llama_swap_port}"
 
     @field_validator("hf_token", "public_endpoint_url", mode="before")
     @classmethod

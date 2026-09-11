@@ -2,8 +2,11 @@ import threading
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 from fastapi.testclient import TestClient
 
+from swapboard.api.configfile import ConfigFile
+from swapboard.api.llamaswap import LlamaSwapCatalog
 from swapboard.api.service import Downloads, ModelsService
 from swapboard.api.settings import Settings
 from swapboard.common.models import DownloadState
@@ -53,12 +56,29 @@ def build_settings(
     )
 
 
+def build_catalog(payload: object) -> LlamaSwapCatalog:
+    """A catalog that answers from a fixture rather than a live llama-swap."""
+    catalog = LlamaSwapCatalog("http://llama-swap.test")
+    catalog._client = httpx.Client(
+        base_url="http://llama-swap.test",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=payload)
+        ),
+    )
+    return catalog
+
+
+def build_service(settings: Settings, catalog_payload: object = None) -> ModelsService:
+    return ModelsService(settings, build_catalog(catalog_payload or {"data": []}))
+
+
 def build_client(
     tmp_models: Path,
     llama_swap_port: int = 8080,
     *,
     config: Path | None = None,
     public_endpoint_url: str | None = None,
+    catalog_payload: object = None,
 ) -> TestClient:
     settings = build_settings(
         tmp_models,
@@ -70,7 +90,8 @@ def build_client(
     import swapboard.api.main as main
 
     main.settings = settings
-    main.service = ModelsService(settings)
+    main.service = build_service(settings, catalog_payload)
+    main.config_file = ConfigFile(settings.llama_swap_config_path)
     return TestClient(main.app)
 
 
@@ -232,7 +253,7 @@ def test_download_fetches_only_missing_projector(tmp_path: Path) -> None:
     model_dir = tmp_path / "unsloth" / "Qwen3.5-4B-GGUF"
     model_dir.mkdir(parents=True)
     (model_dir / "Qwen3.5-4B-Q4_K_M.gguf").write_bytes(b"fake-model")
-    service = ModelsService(
+    service = build_service(
         build_settings(
             tmp_path,
             hf_token="token",
@@ -272,7 +293,7 @@ def test_download_retries_failed_projector_without_fetching_primary_again(
 ) -> None:
     model_dir = tmp_path / "unsloth" / "Qwen3.5-4B-GGUF"
     model_dir.mkdir(parents=True)
-    service = ModelsService(
+    service = build_service(
         build_settings(tmp_path, config=write_multimodal_config(tmp_path))
     )
     requested_filenames: list[str] = []
@@ -314,7 +335,7 @@ def test_download_retries_failed_projector_without_fetching_primary_again(
 
 
 def test_download_in_progress_is_not_started_twice(tmp_path: Path) -> None:
-    service = ModelsService(build_settings(tmp_path))
+    service = build_service(build_settings(tmp_path))
 
     with patch.object(threading.Thread, "start", lambda thread: None):
         first = service.start_download("embeddinggemma-300M")
@@ -323,3 +344,174 @@ def test_download_in_progress_is_not_started_twice(tmp_path: Path) -> None:
     assert first.started is True
     assert second.started is False
     assert second.message == "Download already in progress"
+
+
+def test_list_models_reports_size_on_disk(tmp_path: Path) -> None:
+    model_dir = tmp_path / "ggml-org" / "embeddinggemma-300M-GGUF"
+    model_dir.mkdir(parents=True)
+    (model_dir / "embeddinggemma-300M-Q8_0.gguf").write_bytes(b"x" * 2048)
+    client = build_client(tmp_path)
+
+    payload = client.get("/models").json()
+
+    assert payload[0]["size_bytes"] == 2048
+
+
+def test_list_models_carries_the_metadata_llama_swap_reports(tmp_path: Path) -> None:
+    client = build_client(
+        tmp_path,
+        catalog_payload={
+            "data": [
+                {
+                    "id": "embeddinggemma-300M",
+                    "context_length": 2048,
+                    "meta": {
+                        "llamaswap": {
+                            "family": "EmbeddingGemma",
+                            "quantization": "Q8_0",
+                            "task": "embeddings",
+                        }
+                    },
+                }
+            ]
+        },
+    )
+
+    meta = client.get("/models").json()[0]["meta"]
+
+    assert meta["family"] == "EmbeddingGemma"
+    assert meta["quantization"] == "Q8_0"
+    assert meta["context_length"] == 2048
+
+
+def test_list_models_leaves_metadata_absent_when_llama_swap_knows_nothing(
+    tmp_path: Path,
+) -> None:
+    client = build_client(tmp_path)
+
+    assert client.get("/models").json()[0]["meta"] is None
+
+
+def test_list_stray_models_reports_only_unreferenced_files(tmp_path: Path) -> None:
+    configured = tmp_path / "ggml-org" / "embeddinggemma-300M-GGUF"
+    configured.mkdir(parents=True)
+    (configured / "embeddinggemma-300M-Q8_0.gguf").write_bytes(b"x")
+    forgotten = tmp_path / "acme" / "retired-GGUF"
+    forgotten.mkdir(parents=True)
+    (forgotten / "retired.gguf").write_bytes(b"x" * 64)
+    client = build_client(tmp_path)
+
+    payload = client.get("/stray-models").json()
+
+    assert payload == [
+        {
+            "relative_path": "acme/retired-GGUF",
+            "files": ["retired.gguf"],
+            "size_bytes": 64,
+        }
+    ]
+
+
+def test_remove_model_deletes_its_files(tmp_path: Path) -> None:
+    model_dir = tmp_path / "ggml-org" / "embeddinggemma-300M-GGUF"
+    model_dir.mkdir(parents=True)
+    (model_dir / "embeddinggemma-300M-Q8_0.gguf").write_bytes(b"x")
+    client = build_client(tmp_path)
+
+    response = client.delete("/models/embeddinggemma-300M")
+
+    assert response.status_code == 200
+    assert response.json()["removed"] is True
+    assert client.get("/models").json()[0]["present"] is False
+
+
+def test_remove_model_reports_a_model_that_was_never_downloaded(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    response = client.delete("/models/embeddinggemma-300M")
+
+    assert response.status_code == 200
+    assert response.json() == {"removed": False, "message": "Model was not downloaded"}
+
+
+def test_remove_unknown_model_is_not_found(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    assert client.delete("/models/absent").status_code == 404
+
+
+def test_remove_stray_model_deletes_the_directory(tmp_path: Path) -> None:
+    forgotten = tmp_path / "acme" / "retired-GGUF"
+    forgotten.mkdir(parents=True)
+    (forgotten / "retired.gguf").write_bytes(b"x")
+    client = build_client(tmp_path)
+
+    response = client.delete("/stray-models/acme/retired-GGUF")
+
+    assert response.status_code == 200
+    assert response.json()["removed"] is True
+    assert not forgotten.exists()
+
+
+def test_remove_unknown_stray_model_is_not_found(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    assert client.delete("/stray-models/acme/absent").status_code == 404
+
+
+def test_remove_stray_model_refuses_to_escape_the_models_directory(
+    tmp_path: Path,
+) -> None:
+    """An encoded `..` survives URL normalisation and reaches the handler intact."""
+    outside = tmp_path.parent / "outside-the-store"
+    outside.mkdir(exist_ok=True)
+    client = build_client(tmp_path)
+
+    response = client.delete("/stray-models/%2e%2e/outside-the-store")
+
+    assert response.status_code == 400
+    assert outside.exists()
+
+
+def test_get_config_returns_the_current_file(tmp_path: Path) -> None:
+    client = build_client(tmp_path)
+
+    payload = client.get("/config").json()
+
+    assert payload["text"] == DEFAULT_CONFIG
+    assert payload["warnings"] == []
+
+
+def test_save_config_replaces_the_file(tmp_path: Path) -> None:
+    config = write_default_config(tmp_path)
+    client = build_client(tmp_path, config=config)
+    replacement = DEFAULT_CONFIG.replace("--embeddings", "--embeddings --parallel 2")
+
+    response = client.put("/config", json={"text": replacement})
+
+    assert response.status_code == 200
+    assert response.json()["saved"] is True
+    assert config.read_text(encoding="utf-8") == replacement
+
+
+def test_save_config_rejects_a_schema_violation_without_writing(tmp_path: Path) -> None:
+    config = write_default_config(tmp_path)
+    client = build_client(tmp_path, config=config)
+
+    response = client.put("/config", json={"text": "models:\n  broken:\n    ttl: 5\n"})
+
+    assert response.status_code == 422
+    assert response.json()["errors"] == ["models/broken: 'cmd' is a required property"]
+    assert config.read_text(encoding="utf-8") == DEFAULT_CONFIG
+
+
+def test_saved_config_is_served_to_the_models_endpoint(tmp_path: Path) -> None:
+    """`--watch-config` reloads llama-swap, and swapboard rereads on every call."""
+    client = build_client(tmp_path, config=write_default_config(tmp_path))
+    renamed = DEFAULT_CONFIG.replace("embeddinggemma-300M:", "renamed-model:")
+
+    client.put("/config", json={"text": renamed})
+
+    names = [model["name"] for model in client.get("/models").json()]
+
+    assert names == ["renamed-model"]

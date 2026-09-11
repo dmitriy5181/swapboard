@@ -1,0 +1,59 @@
+{# `h-100` fills the height `modal-dialog-scrollable` gives the dialog, so the
+   editor grows with the window and the footer stays pinned to the bottom. The
+   `modal-content` class belongs here rather than on a wrapper; see index.html. #}
+<form class="modal-content h-100"
+      hx-put="{{ url_for('models_bp.save_config') }}"
+      hx-target="#config-modal-dialog" hx-swap="innerHTML">
+    <div class="modal-header">
+        <h5 class="modal-title">
+            <i class="bi bi-pencil-square me-2"></i>llama-swap configuration
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <div class="modal-body d-flex flex-column">
+        {% if saved %}
+        <div class="alert alert-success" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i>{{ saved }}
+        </div>
+        {% endif %}
+
+        {% if errors %}
+        <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>The configuration was not saved.
+            <ul class="mb-0 mt-2 small font-monospace">
+                {% for error in errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if warnings %}
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>swapboard cannot manage every configured model.
+            <ul class="mb-0 mt-2 small">
+                {% for warning in warnings %}
+                <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <label class="form-label small text-body-secondary" for="config-text">
+            Saved changes are validated against the llama-swap schema and picked
+            up without a restart.
+        </label>
+        {# Grows into whatever the dialog leaves and scrolls on its own, so the
+           modal never ends up with a scrollbar inside a scrollbar. #}
+        <textarea class="form-control font-monospace flex-grow-1" id="config-text"
+                  name="text" rows="12" spellcheck="false" wrap="off">{{ text }}</textarea>
+    </div>
+    <div class="modal-footer py-3">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            Close
+        </button>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>Save
+        </button>
+    </div>
+</form>

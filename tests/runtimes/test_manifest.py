@@ -1,12 +1,18 @@
+import hashlib
 import re
+from importlib.resources import files
 
 import pytest
+from jsonschema import Draft7Validator
 
 from swapboard.runtimes.manifest import (
     ARTIFACTS,
+    LLAMA_SWAP_CONFIG_SCHEMA,
+    LLAMA_SWAP_VERSION,
     RUNTIMES,
     UnsupportedPlatformError,
     is_supported,
+    load_config_schema,
     resolve,
 )
 
@@ -59,3 +65,21 @@ def test_is_supported_reports_platform_coverage() -> None:
     assert is_supported("darwin", "arm64") is True
     assert is_supported("darwin", "x86_64") is True
     assert is_supported("linux", "x86_64") is False
+
+
+def test_vendored_schema_matches_its_pinned_digest() -> None:
+    """A refresh that skips the digest would validate against the wrong release."""
+    resource = files("swapboard.runtimes").joinpath(LLAMA_SWAP_CONFIG_SCHEMA.resource)
+
+    digest = hashlib.sha256(resource.read_bytes()).hexdigest()
+
+    assert digest == LLAMA_SWAP_CONFIG_SCHEMA.sha256
+
+
+def test_schema_is_pinned_to_the_installed_llama_swap() -> None:
+    assert LLAMA_SWAP_CONFIG_SCHEMA.version == LLAMA_SWAP_VERSION
+    assert f"/v{LLAMA_SWAP_VERSION}/" in LLAMA_SWAP_CONFIG_SCHEMA.url
+
+
+def test_loaded_schema_is_usable_as_draft_seven() -> None:
+    Draft7Validator.check_schema(load_config_schema())

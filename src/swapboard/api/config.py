@@ -10,13 +10,18 @@ from swapboard.common.models import ModelFile, ModelSource
 
 
 def parse_model_sources(config_path: str | os.PathLike[str]) -> list[ModelSource]:
+    with open(config_path, encoding="utf-8") as handle:
+        return model_sources(yaml.safe_load(handle))
+
+
+def model_sources(config: object) -> list[ModelSource]:
     """Reads every model whose GGUF files can be traced back to Hugging Face.
 
     Models whose command line cannot be resolved are skipped rather than
     reported, because swapboard can only manage files it knows how to fetch.
     """
-    with open(config_path, encoding="utf-8") as handle:
-        config = yaml.safe_load(handle) or {}
+    if not isinstance(config, dict):
+        return []
 
     sources: list[ModelSource] = []
     for name, definition in (config.get("models") or {}).items():
@@ -87,4 +92,16 @@ def _derive_hf_source(model_path: str) -> tuple[str, str, str] | None:
     if len(parts) < 3:
         return None
     org, repo, filename = parts[-3], parts[-2], parts[-1]
+    if not all(_is_plain(part) for part in (org, repo, filename)):
+        return None
     return f"{org}/{repo}", filename, f"{org}/{repo}/{filename}"
+
+
+def _is_plain(part: str) -> bool:
+    """Rejects a path component that is not a plain name.
+
+    `/opt/llama.gguf` splits into exactly three parts, the first being the root
+    anchor, which would otherwise yield a repository named `/` and a relative
+    path that resolves outside the models directory entirely.
+    """
+    return part not in (".", "..") and not Path(part).is_absolute()

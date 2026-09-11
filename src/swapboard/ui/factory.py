@@ -1,6 +1,13 @@
 from flask import Flask
 
 from swapboard.common.client import SwapboardClient
+from swapboard.ui.presentation import (
+    capability_badge,
+    format_context,
+    format_parameters,
+    state_badge,
+    task_badge,
+)
 from swapboard.ui.settings import UISettings
 from swapboard.ui.views import models_bp
 
@@ -18,6 +25,7 @@ def create_app(config: dict | None = None) -> Flask:
     if config is not None:
         app.config.update(config)
 
+    _register_presentation(app)
     app.register_blueprint(models_bp)
 
     @app.get("/health")
@@ -25,3 +33,19 @@ def create_app(config: dict | None = None) -> Flask:
         return {"status": "ok"}
 
     return app
+
+
+def _register_presentation(app: Flask) -> None:
+    """Exposes the badge vocabulary to templates.
+
+    Keeping the mapping from metadata to icons and wording in Python leaves the
+    template describing layout only, and makes the wording testable on its own.
+    """
+    for helper in (
+        state_badge,
+        capability_badge,
+        task_badge,
+        format_parameters,
+        format_context,
+    ):
+        app.add_template_global(helper)
