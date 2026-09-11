@@ -663,3 +663,25 @@ def test_removal_releases_the_claim_it_took_for_a_later_download(
         response = client.post("/models/embeddinggemma-300M/download")
 
     assert response.json()["started"] is True
+
+
+SORTING_CONFIG = """\
+models:
+  zephyr:
+    cmd: llama-server -m /models/acme/zephyr-GGUF/zephyr.gguf
+  Alpha:
+    cmd: llama-server -m /models/acme/alpha-GGUF/alpha.gguf
+  mistral:
+    cmd: llama-server -m /models/acme/mistral-GGUF/mistral.gguf
+"""
+
+
+def test_list_models_is_sorted_by_name(tmp_path: Path) -> None:
+    """Config order is written for llama-swap, not for anyone reading it."""
+    config = tmp_path / "sorting.yml"
+    config.write_text(SORTING_CONFIG, encoding="utf-8")
+    client = build_client(tmp_path, config=config)
+
+    names = [model["name"] for model in client.get("/models").json()]
+
+    assert names == ["Alpha", "mistral", "zephyr"]

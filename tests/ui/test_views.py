@@ -288,12 +288,66 @@ def test_model_metadata_is_rendered_as_badges() -> None:
 
     response = build_client(stub).get("/partials/models")
 
-    assert b"Gemma 4" in response.data
     assert b"8B (4.5B active)" in response.data
     assert b"QAT-Q4_0" in response.data
     assert b"128K ctx" in response.data
     assert b"bi-eye" in response.data
     assert b"bi-tools" in response.data
+
+
+def test_model_family_is_not_rendered() -> None:
+    """The family repeats what the name and repository already say."""
+    stub = StubClient(online(model(meta=ModelMeta(family="Gemma 4"))))
+
+    assert b"Gemma 4" not in build_client(stub).get("/partials/models").data
+
+
+def test_capabilities_are_rendered_without_their_names() -> None:
+    """Only the icon is drawn; the name stays available to assistive tech."""
+    stub = StubClient(online(model(meta=ModelMeta(capabilities=("vision",)))))
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"bi-eye" in response.data
+    assert b'<span class="visually-hidden">Vision</span>' in response.data
+
+
+def test_loaded_model_replaces_the_available_badge() -> None:
+    """Held in memory is the more specific truth about a present model."""
+    stub = StubClient(online(model(present=True, meta=ModelMeta(state="loaded"))))
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"Loaded" in response.data
+    assert b"Available" not in response.data
+
+
+def test_present_model_without_a_live_state_is_available() -> None:
+    stub = StubClient(online(model(present=True, meta=ModelMeta(state="unloaded"))))
+
+    assert b"Available" in build_client(stub).get("/partials/models").data
+
+
+def test_failed_download_outranks_the_state_it_caused() -> None:
+    """llama-swap cannot start what never downloaded, and says so as `error`.
+
+    That generic state must not bury the download error, which is the only one
+    of the two telling the user what to actually fix.
+    """
+    stub = StubClient(
+        online(
+            model(
+                download_state=DownloadState.FAILED,
+                download_error="disk full",
+                meta=ModelMeta(state="error"),
+            )
+        )
+    )
+
+    response = build_client(stub).get("/partials/models")
+
+    assert b"Failed" in response.data
+    assert b"disk full" in response.data
 
 
 def test_loaded_model_is_marked_as_held_in_memory() -> None:
@@ -512,3 +566,11 @@ def test_config_modal_is_named_for_a_screen_reader(stub) -> None:
 
     assert b'aria-labelledby="config-modal-title"' in page.data
     assert b'id="config-modal-title"' in editor.data
+
+
+def test_repository_is_rendered_as_text_not_a_badge(stub) -> None:
+    """It is an identifier to read and copy, not a label to decorate."""
+    response = build_client(stub).get("/partials/models")
+
+    assert b"ggml-org/embeddinggemma-300M-GGUF" in response.data
+    assert b"badge text-bg-light border font-monospace" not in response.data
