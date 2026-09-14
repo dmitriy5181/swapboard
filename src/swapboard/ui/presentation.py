@@ -32,12 +32,6 @@ CAPABILITY_BADGES = {
     "reranker": Badge("bi-sort-down", "Reranking"),
 }
 
-TASK_BADGES = {
-    "chat": Badge("bi-chat-dots", "Chat"),
-    "embeddings": Badge("bi-diagram-3", "Embeddings"),
-    "reranking": Badge("bi-sort-down", "Reranking"),
-}
-
 
 def state_badge(state: str | None) -> StateBadge | None:
     """Says what llama-swap is doing with a model right now.
@@ -78,10 +72,6 @@ def capability_badge(name: str) -> Badge:
     is shown rather than dropped, so the dashboard never quietly omits it.
     """
     return CAPABILITY_BADGES.get(name, Badge("bi-star", name.replace("_", " ")))
-
-
-def task_badge(name: str) -> Badge:
-    return TASK_BADGES.get(name, Badge("bi-cpu", name))
 
 
 def format_parameters(parameters: ModelParameters | None) -> str | None:

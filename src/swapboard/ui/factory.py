@@ -6,7 +6,6 @@ from swapboard.ui.presentation import (
     format_context,
     format_parameters,
     state_badge,
-    task_badge,
 )
 from swapboard.ui.settings import UISettings
 from swapboard.ui.views import models_bp
@@ -44,7 +43,6 @@ def _register_presentation(app: Flask) -> None:
     for helper in (
         state_badge,
         capability_badge,
-        task_badge,
         format_parameters,
         format_context,
     ):

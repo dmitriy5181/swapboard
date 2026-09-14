@@ -293,6 +293,7 @@ def test_model_metadata_is_rendered_as_badges() -> None:
     assert b"128K ctx" in response.data
     assert b"bi-eye" in response.data
     assert b"bi-tools" in response.data
+    assert b"Chat" not in response.data
 
 
 def test_model_family_is_not_rendered() -> None:
