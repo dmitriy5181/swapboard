@@ -1,4 +1,4 @@
-{# The shape of one model: size, precision, context and what it is for.
+{# The shape of one model: size, precision, and context.
    Metadata is absent whenever llama-swap is unreachable, so every badge here
    is optional and the cell may render empty. #}
 {% if model.meta %}
@@ -14,12 +14,6 @@
     {% set context = format_context(meta.context_length) %}
     {% if context %}
     <span class="badge text-bg-secondary" title="Context length">{{ context }}</span>
-    {% endif %}
-    {% if meta.task %}
-    {% set task = task_badge(meta.task) %}
-    <span class="badge text-bg-info" title="{{ task.label }}">
-        <i class="bi {{ task.icon }} me-1"></i>{{ task.label }}
-    </span>
     {% endif %}
 </div>
 {% endif %}
