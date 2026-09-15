@@ -1,10 +1,10 @@
 import stat
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
+from swapboard.api import configfile as configfile_module
 from swapboard.api.configfile import ConfigFile
 
 VALID = """
@@ -57,17 +57,27 @@ def test_write_preserves_config_permissions(config: Path) -> None:
     assert stat.S_IMODE(config.stat().st_mode) == 0o640
 
 
-def test_write_restores_config_owner_when_temporary_owner_differs(
+def test_preserve_metadata_restores_owner_when_temporary_owner_differs(
     config: Path,
 ) -> None:
-    owner = config.stat()
-    temporary_owner = SimpleNamespace(st_uid=owner.st_uid + 1, st_gid=owner.st_gid + 1)
-
-    with (
-        patch("swapboard.api.configfile.os.fstat", return_value=temporary_owner),
-        patch("swapboard.api.configfile.os.fchown") as change_owner,
-    ):
-        ConfigFile(config).write(VALID.replace("llama-3", "llama-4"))
+    with config.open() as handle:
+        temporary_owner = configfile_module.os.fstat(handle.fileno())
+        owner = configfile_module.os.stat_result(
+            (
+                temporary_owner.st_mode,
+                temporary_owner.st_ino,
+                temporary_owner.st_dev,
+                temporary_owner.st_nlink,
+                temporary_owner.st_uid + 1,
+                temporary_owner.st_gid + 1,
+                temporary_owner.st_size,
+                temporary_owner.st_atime,
+                temporary_owner.st_mtime,
+                temporary_owner.st_ctime,
+            )
+        )
+        with patch("swapboard.api.configfile.os.fchown") as change_owner:
+            configfile_module._preserve_metadata(handle.fileno(), owner)
 
     _, user_id, group_id = change_owner.call_args.args
     assert (user_id, group_id) == (owner.st_uid, owner.st_gid)
