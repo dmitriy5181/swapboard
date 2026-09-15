@@ -194,8 +194,11 @@ class ModelsService:
         return next((source for source in self._sources() if source.name == name), None)
 
     def _status_for(self, source: ModelSource, meta: ModelMeta | None) -> ModelStatus:
+        progress = self._downloads.get(source.name)
         present = self._store.is_present(source)
-        progress = self._progress_for(source, present)
+        if not present and progress.state == DownloadState.COMPLETED:
+            self._downloads.clear(source.name)
+            progress = DownloadProgress()
         primary_file = source.primary_file
         return ModelStatus(
             name=source.name,
@@ -208,23 +211,6 @@ class ModelsService:
             size_bytes=self._store.size_of(source),
             meta=meta,
         )
-
-    def _progress_for(
-        self, source: ModelSource, present: bool
-    ) -> DownloadProgress:
-        """Reads a model's download state, forgetting one the files contradict.
-
-        A finished download is remembered under the model's name, but the files
-        it fetched can stop being that model's: an edit to the config repoints
-        the name, or the weights are deleted from outside. A `completed` left
-        standing would then report a model as downloaded that is not there, and
-        the table offers no way to fetch a model it believes it already has.
-        """
-        progress = self._downloads.get(source.name)
-        if present or progress.state != DownloadState.COMPLETED:
-            return progress
-        self._downloads.clear(source.name)
-        return DownloadProgress()
 
     def _run_download(self, source: ModelSource) -> None:
         """Fetches whichever of a model's files are still missing.

@@ -9,7 +9,7 @@ from swapboard.api.configfile import ConfigFile
 from swapboard.api.llamaswap import LlamaSwapCatalog
 from swapboard.api.service import Downloads, ModelsService
 from swapboard.api.settings import Settings
-from swapboard.common.models import DownloadState, ModelStatus
+from swapboard.common.models import DownloadProgress, DownloadState, ModelStatus
 
 DEFAULT_CONFIG = """\
 models:
@@ -640,6 +640,32 @@ def test_deleting_the_weights_outside_the_gateway_clears_completed(
     status = status_of(service, "embeddinggemma-300M")
     assert status.present is False
     assert status.download_state == DownloadState.IDLE
+
+
+def test_status_when_download_completes_during_presence_check_keeps_polling(
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(tmp_path)
+    service = build_service(settings)
+    service._downloads.set(
+        "embeddinggemma-300M",
+        DownloadProgress(state=DownloadState.DOWNLOADING),
+    )
+
+    def complete_download(_: object) -> bool:
+        service._downloads.set(
+            "embeddinggemma-300M",
+            DownloadProgress(state=DownloadState.COMPLETED),
+        )
+        return False
+
+    with patch.object(service._store, "is_present", side_effect=complete_download):
+        status = status_of(service, "embeddinggemma-300M")
+
+    assert status.download_state == DownloadState.DOWNLOADING
+    assert (
+        service._downloads.get("embeddinggemma-300M").state == DownloadState.COMPLETED
+    )
 
 
 SHARED_WEIGHTS_CONFIG = """\
