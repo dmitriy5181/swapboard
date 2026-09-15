@@ -1,7 +1,10 @@
+import stat
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from swapboard.api import configfile as configfile_module
 from swapboard.api.configfile import ConfigFile
 
 VALID = """
@@ -44,6 +47,40 @@ def test_valid_config_is_written_and_backed_up(config: Path) -> None:
     assert validation.valid is True
     assert config.read_text(encoding="utf-8") == replacement
     assert backup_of(config).read_text(encoding="utf-8") == VALID
+
+
+def test_write_preserves_config_permissions(config: Path) -> None:
+    config.chmod(0o640)
+
+    ConfigFile(config).write(VALID.replace("llama-3", "llama-4"))
+
+    assert stat.S_IMODE(config.stat().st_mode) == 0o640
+
+
+def test_preserve_metadata_restores_owner_when_temporary_owner_differs(
+    config: Path,
+) -> None:
+    with config.open() as handle:
+        temporary_owner = configfile_module.os.fstat(handle.fileno())
+        owner = configfile_module.os.stat_result(
+            (
+                temporary_owner.st_mode,
+                temporary_owner.st_ino,
+                temporary_owner.st_dev,
+                temporary_owner.st_nlink,
+                temporary_owner.st_uid + 1,
+                temporary_owner.st_gid + 1,
+                temporary_owner.st_size,
+                temporary_owner.st_atime,
+                temporary_owner.st_mtime,
+                temporary_owner.st_ctime,
+            )
+        )
+        with patch("swapboard.api.configfile.os.fchown") as change_owner:
+            configfile_module._preserve_metadata(handle.fileno(), owner)
+
+    _, user_id, group_id = change_owner.call_args.args
+    assert (user_id, group_id) == (owner.st_uid, owner.st_gid)
 
 
 def test_invalid_yaml_is_rejected_and_changes_nothing(config: Path) -> None:

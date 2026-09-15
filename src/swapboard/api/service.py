@@ -40,6 +40,16 @@ class Downloads:
         with self._lock:
             self._by_model.pop(name, None)
 
+    def clear_if_current(
+        self, name: str, expected: DownloadProgress
+    ) -> DownloadProgress:
+        with self._lock:
+            current = self._by_model.get(name)
+            if current is not expected:
+                return current or DownloadProgress()
+            self._by_model.pop(name)
+            return DownloadProgress()
+
     def try_claim(self, name: str) -> bool:
         """Claims the download slot for a model, or reports it already taken.
 
@@ -195,13 +205,17 @@ class ModelsService:
 
     def _status_for(self, source: ModelSource, meta: ModelMeta | None) -> ModelStatus:
         progress = self._downloads.get(source.name)
+        present = self._store.is_present(source)
+        if not present and progress.state == DownloadState.COMPLETED:
+            progress = self._downloads.clear_if_current(source.name, progress)
+            present = self._store.is_present(source)
         primary_file = source.primary_file
         return ModelStatus(
             name=source.name,
             repo_id=primary_file.repo_id,
             filename=primary_file.filename,
             path=str(self._store.resolve(primary_file)),
-            present=self._store.is_present(source),
+            present=present,
             download_state=progress.state,
             download_error=progress.error,
             size_bytes=self._store.size_of(source),

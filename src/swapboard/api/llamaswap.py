@@ -29,10 +29,10 @@ class LlamaSwapCatalog:
             response = self._client.get("/v1/models")
             response.raise_for_status()
             entries = response.json()["data"]
+            return _index(entries)
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
             logger.warning("llama-swap model metadata unavailable: %s", exc)
             return {}
-        return _index(entries)
 
 
 def _index(entries: object) -> dict[str, ModelMeta]:

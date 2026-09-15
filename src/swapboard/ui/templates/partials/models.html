@@ -106,14 +106,18 @@
                                 <span class="badge text-bg-{{ live_state.style }}" title="{{ live_state.title }}">
                                     <i class="bi {{ live_state.icon }} me-1"></i>{{ live_state.label }}
                                 </span>
-                                {% elif model.present or model.download_state.value == 'completed' %}
+                                {% elif model.present %}
                                 <span class="badge text-bg-success">Available</span>
                                 {% else %}
                                 <span class="badge text-bg-secondary">Not downloaded</span>
                                 {% endif %}
                             </td>
                             <td class="text-end">
-                                {% set is_present = model.present or model.download_state.value == 'completed' %}
+                                {# Files on disk are the only thing that makes a model
+                                   downloaded; a remembered `completed` cannot stand in
+                                   for them, or a model whose weights went away is left
+                                   with its download button disabled. #}
+                                {% set is_present = model.present %}
                                 {% set in_progress = model.download_state.value == 'downloading' %}
                                 <div class="btn-group btn-group-sm" role="group">
                                     <button type="button" class="btn btn-outline-secondary"

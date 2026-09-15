@@ -43,21 +43,23 @@ class ModelStore:
         served with different settings -- and removing one of them must not
         take the file the other one runs on.
 
-        Directories left holding no GGUF are removed outright, which also
-        clears the `.cache` metadata `hf_hub_download` leaves behind.
+        The `.cache` metadata `hf_hub_download` leaves behind is removed once
+        no model files remain, while unrelated files are preserved.
         """
         spared = self._occupied_by(claimed_elsewhere)
         directories = set()
+        repositories = set()
         removed = False
         for model_file in source.files:
             path = self.resolve(model_file)
             if path in spared:
                 continue
             directories.add(path.parent)
+            repositories.add(self.repository_directory(model_file))
             if path.exists():
                 path.unlink()
                 removed = True
-        self._prune_all(directories)
+        self._prune_all(directories, repositories)
         return removed
 
     def remove_stray(self, relative_path: str, claimed: Iterable[str]) -> bool:
@@ -76,9 +78,10 @@ class ModelStore:
             return False
 
         directories = {path.parent for path in targets}
+        repositories = {self._repository_directory_for(path) for path in targets}
         for path in targets:
             path.unlink()
-        self._prune_all(directories)
+        self._prune_all(directories, repositories)
         return True
 
     def stray(self, claimed: Iterable[str]) -> list[StrayModel]:
@@ -148,16 +151,41 @@ class ModelStore:
             if path.is_file() and not _is_hidden(path.relative_to(self._root))
         ]
 
-    def _prune_all(self, directories: Iterable[Path]) -> None:
-        for directory in directories:
-            self._prune(directory)
+    def _prune_all(
+        self, directories: Iterable[Path], repositories: Iterable[Path]
+    ) -> None:
+        repository_set = set(repositories)
+        deepest_first = sorted(
+            set(directories) | repository_set,
+            key=lambda path: len(path.parts),
+            reverse=True,
+        )
+        for directory in deepest_first:
+            self._prune(directory, should_remove_cache=directory in repository_set)
 
-    def _prune(self, directory: Path) -> None:
+    def _prune(self, directory: Path, *, should_remove_cache: bool) -> None:
         if directory == self._root or not directory.is_dir():
             return
-        if any(directory.rglob(f"*{GGUF_SUFFIX}")):
+        if self._contains_model_file(directory):
             return
-        shutil.rmtree(directory)
+        if should_remove_cache:
+            cache = directory / ".cache"
+            if cache.is_dir():
+                shutil.rmtree(cache)
+        if not any(directory.iterdir()):
+            directory.rmdir()
+
+    def _repository_directory_for(self, path: Path) -> Path:
+        relative = path.relative_to(self._root)
+        if len(relative.parts) < 3:
+            return path.parent
+        return self._root.joinpath(*relative.parts[:2])
+
+    def _contains_model_file(self, directory: Path) -> bool:
+        return any(
+            path.is_file() and not _is_hidden(path.relative_to(self._root))
+            for path in directory.rglob(f"*{GGUF_SUFFIX}")
+        )
 
     def _size_of_file(self, model_file: ModelFile) -> int:
         path = self.resolve(model_file)

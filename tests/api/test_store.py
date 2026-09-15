@@ -74,6 +74,17 @@ def test_remove_clears_the_download_cache_left_beside_the_files(tmp_path: Path) 
     assert not (tmp_path / "acme/demo-GGUF").exists()
 
 
+def test_remove_preserves_unrelated_files_beside_the_model(tmp_path: Path) -> None:
+    model = gguf(tmp_path, "acme/demo-GGUF/demo.gguf")
+    readme = tmp_path / "acme/demo-GGUF/README.md"
+    readme.write_text("user notes", encoding="utf-8")
+
+    ModelStore(tmp_path).remove(source("acme/demo-GGUF/demo.gguf"), [])
+
+    assert not model.exists()
+    assert readme.read_text(encoding="utf-8") == "user notes"
+
+
 def test_remove_keeps_a_directory_another_model_still_uses(tmp_path: Path) -> None:
     gguf(tmp_path, "acme/demo-GGUF/small.gguf")
     gguf(tmp_path, "acme/demo-GGUF/large.gguf")
@@ -155,6 +166,39 @@ def test_remove_stray_deletes_a_whole_stray_directory(tmp_path: Path) -> None:
 
     assert ModelStore(tmp_path).remove_stray("acme/gone-GGUF", []) is True
     assert not (tmp_path / "acme/gone-GGUF").exists()
+
+
+def test_remove_stray_preserves_unrelated_files_in_its_directory(
+    tmp_path: Path,
+) -> None:
+    model = gguf(tmp_path, "acme/gone-GGUF/gone.gguf")
+    readme = tmp_path / "acme/gone-GGUF/README.md"
+    readme.write_text("user notes", encoding="utf-8")
+
+    ModelStore(tmp_path).remove_stray("acme/gone-GGUF", [])
+
+    assert not model.exists()
+    assert readme.read_text(encoding="utf-8") == "user notes"
+
+
+def test_remove_nested_strays_clears_repository_cache_after_the_last_model(
+    tmp_path: Path,
+) -> None:
+    gguf(tmp_path, "acme/demo-GGUF/demo.gguf")
+    gguf(tmp_path, "acme/demo-GGUF/MTP/draft.gguf")
+    cache = tmp_path / "acme/demo-GGUF/.cache/huggingface/demo.metadata"
+    cache.parent.mkdir(parents=True)
+    cache.write_text("meta", encoding="utf-8")
+    readme = tmp_path / "acme/demo-GGUF/README.md"
+    readme.write_text("user notes", encoding="utf-8")
+    store = ModelStore(tmp_path)
+
+    store.remove_stray("acme/demo-GGUF", [])
+    assert cache.exists()
+    store.remove_stray("acme/demo-GGUF/MTP", [])
+
+    assert not cache.exists()
+    assert readme.read_text(encoding="utf-8") == "user notes"
 
 
 def test_remove_stray_spares_a_configured_file_beside_it(tmp_path: Path) -> None:
