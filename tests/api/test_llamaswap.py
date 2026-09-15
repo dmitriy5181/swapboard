@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from unittest.mock import MagicMock, patch
 
 import httpx
 
@@ -112,6 +113,17 @@ def test_fetch_meta_returns_nothing_on_an_error_status() -> None:
 
 def test_fetch_meta_returns_nothing_for_an_unexpected_payload() -> None:
     assert catalog_returning({"models": []}).fetch_meta() == {}
+
+
+def test_fetch_meta_returns_nothing_for_malformed_capabilities() -> None:
+    response = MagicMock()
+    response.json.return_value = {
+        "data": [{"id": "broken", "capabilities": {"chat": True, 1: True}}]
+    }
+    catalog = catalog_returning({"data": []})
+
+    with patch.object(catalog._client, "get", return_value=response):
+        assert catalog.fetch_meta() == {}
 
 
 def test_fetch_meta_skips_an_entry_whose_id_is_not_a_name() -> None:

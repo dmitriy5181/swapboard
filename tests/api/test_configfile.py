@@ -1,4 +1,7 @@
+import stat
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -44,6 +47,30 @@ def test_valid_config_is_written_and_backed_up(config: Path) -> None:
     assert validation.valid is True
     assert config.read_text(encoding="utf-8") == replacement
     assert backup_of(config).read_text(encoding="utf-8") == VALID
+
+
+def test_write_preserves_config_permissions(config: Path) -> None:
+    config.chmod(0o640)
+
+    ConfigFile(config).write(VALID.replace("llama-3", "llama-4"))
+
+    assert stat.S_IMODE(config.stat().st_mode) == 0o640
+
+
+def test_write_restores_config_owner_when_temporary_owner_differs(
+    config: Path,
+) -> None:
+    owner = config.stat()
+    temporary_owner = SimpleNamespace(st_uid=owner.st_uid + 1, st_gid=owner.st_gid + 1)
+
+    with (
+        patch("swapboard.api.configfile.os.fstat", return_value=temporary_owner),
+        patch("swapboard.api.configfile.os.fchown") as change_owner,
+    ):
+        ConfigFile(config).write(VALID.replace("llama-3", "llama-4"))
+
+    _, user_id, group_id = change_owner.call_args.args
+    assert (user_id, group_id) == (owner.st_uid, owner.st_gid)
 
 
 def test_invalid_yaml_is_rejected_and_changes_nothing(config: Path) -> None:

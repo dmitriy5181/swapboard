@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 
@@ -60,6 +61,7 @@ class ConfigFile:
             shutil.copy2(self._path, self._path.with_suffix(f"{self._path.suffix}.bak"))
 
     def _replace(self, text: str) -> None:
+        metadata = self._path.stat() if self._path.exists() else None
         handle = tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -70,12 +72,21 @@ class ConfigFile:
         try:
             with handle:
                 handle.write(text)
+                if metadata is not None:
+                    _preserve_metadata(handle.fileno(), metadata)
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(handle.name, self._path)
         except OSError:
             Path(handle.name).unlink(missing_ok=True)
             raise
+
+
+def _preserve_metadata(descriptor: int, metadata: os.stat_result) -> None:
+    current = os.fstat(descriptor)
+    if (current.st_uid, current.st_gid) != (metadata.st_uid, metadata.st_gid):
+        os.fchown(descriptor, metadata.st_uid, metadata.st_gid)
+    os.fchmod(descriptor, stat.S_IMODE(metadata.st_mode))
 
 
 def _unmanageable(document: object) -> list[str]:

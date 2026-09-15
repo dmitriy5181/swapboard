@@ -40,6 +40,16 @@ class Downloads:
         with self._lock:
             self._by_model.pop(name, None)
 
+    def clear_if_current(
+        self, name: str, expected: DownloadProgress
+    ) -> DownloadProgress:
+        with self._lock:
+            current = self._by_model.get(name)
+            if current is not expected:
+                return current or DownloadProgress()
+            self._by_model.pop(name)
+            return DownloadProgress()
+
     def try_claim(self, name: str) -> bool:
         """Claims the download slot for a model, or reports it already taken.
 
@@ -197,8 +207,8 @@ class ModelsService:
         progress = self._downloads.get(source.name)
         present = self._store.is_present(source)
         if not present and progress.state == DownloadState.COMPLETED:
-            self._downloads.clear(source.name)
-            progress = DownloadProgress()
+            progress = self._downloads.clear_if_current(source.name, progress)
+            present = self._store.is_present(source)
         primary_file = source.primary_file
         return ModelStatus(
             name=source.name,

@@ -668,6 +668,29 @@ def test_status_when_download_completes_during_presence_check_keeps_polling(
     )
 
 
+def test_status_does_not_clear_retry_started_during_presence_check(
+    tmp_path: Path,
+) -> None:
+    settings = build_settings(tmp_path)
+    service = build_service(settings)
+    service._downloads.set(
+        "embeddinggemma-300M",
+        DownloadProgress(state=DownloadState.COMPLETED),
+    )
+
+    def start_retry(_: object) -> bool:
+        service._downloads.try_claim("embeddinggemma-300M")
+        return False
+
+    with patch.object(service._store, "is_present", side_effect=start_retry):
+        status = status_of(service, "embeddinggemma-300M")
+
+    assert status.download_state == DownloadState.DOWNLOADING
+    assert (
+        service._downloads.get("embeddinggemma-300M").state == DownloadState.DOWNLOADING
+    )
+
+
 SHARED_WEIGHTS_CONFIG = """\
 models:
   fast:
