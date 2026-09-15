@@ -9,7 +9,7 @@ from swapboard.api.configfile import ConfigFile
 from swapboard.api.llamaswap import LlamaSwapCatalog
 from swapboard.api.service import Downloads, ModelsService
 from swapboard.api.settings import Settings
-from swapboard.common.models import DownloadState
+from swapboard.common.models import DownloadState, ModelStatus
 
 DEFAULT_CONFIG = """\
 models:
@@ -104,6 +104,28 @@ def build_client(
     main.service = build_service(settings, catalog_payload)
     main.config_file = ConfigFile(settings.llama_swap_config_path)
     return TestClient(main.app)
+
+
+def download_into(service: ModelsService, name: str) -> None:
+    """Runs a model's download to completion against the local filesystem."""
+
+    def write_file(**kwargs: str | None) -> str:
+        target = Path(str(kwargs["local_dir"])) / str(kwargs["filename"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"fake-gguf")
+        return str(target)
+
+    with (
+        patch("swapboard.api.service.hf_hub_download", side_effect=write_file),
+        patch.object(threading.Thread, "start", lambda thread: thread.run()),
+    ):
+        service.start_download(name)
+
+
+def status_of(service: ModelsService, name: str) -> ModelStatus:
+    status = service.get_status(name)
+    assert status is not None
+    return status
 
 
 def write_default_config(directory: Path) -> Path:
@@ -574,6 +596,50 @@ def test_saved_config_is_served_to_the_models_endpoint(tmp_path: Path) -> None:
     names = [model["name"] for model in client.get("/models").json()]
 
     assert names == ["renamed-model"]
+
+
+def test_repointing_a_downloaded_model_makes_it_downloadable_again(
+    tmp_path: Path,
+) -> None:
+    """A finished download is no evidence about files it no longer refers to.
+
+    Editing the config to point a model name at different weights leaves the
+    remembered `completed` behind; reported as-is it would show the model as
+    downloaded and leave no way to fetch what it now needs.
+    """
+    config = write_default_config(tmp_path)
+    settings = build_settings(tmp_path, config=config)
+    service = build_service(settings)
+    download_into(service, "embeddinggemma-300M")
+    assert status_of(service, "embeddinggemma-300M").present is True
+
+    config.write_text(
+        DEFAULT_CONFIG.replace("embeddinggemma-300M-Q8_0", "embeddinggemma-300M-F16"),
+        encoding="utf-8",
+    )
+
+    status = status_of(service, "embeddinggemma-300M")
+    assert status.present is False
+    assert status.download_state == DownloadState.IDLE
+    with patch.object(threading.Thread, "start", lambda thread: None):
+        assert service.start_download("embeddinggemma-300M").started is True
+
+
+def test_deleting_the_weights_outside_the_gateway_clears_completed(
+    tmp_path: Path,
+) -> None:
+    """The files are the only evidence; anything may have removed them."""
+    settings = build_settings(tmp_path)
+    service = build_service(settings)
+    download_into(service, "embeddinggemma-300M")
+
+    weights = tmp_path / "ggml-org/embeddinggemma-300M-GGUF"
+    for path in weights.glob("*.gguf"):
+        path.unlink()
+
+    status = status_of(service, "embeddinggemma-300M")
+    assert status.present is False
+    assert status.download_state == DownloadState.IDLE
 
 
 SHARED_WEIGHTS_CONFIG = """\
